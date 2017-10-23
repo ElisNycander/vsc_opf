@@ -44,9 +44,11 @@ define_constants;
 
 %% unpack data
 mpc = get_mpc(om);
-[baseMVA, bus, gen, branch,contingencies] = deal(mpc.baseMVA, mpc.bus, mpc.gen, mpc.branch,mpc.contingencies);
+[baseMVA, bus, gen, branch,contingencies,gen2,bus2] = ...
+    deal(mpc.baseMVA, mpc.bus, mpc.gen, mpc.branch,mpc.contingencies, mpc.gen2, mpc.bus2);
 vv = get_idx(om);
 
+lim_type = mpopt.opf.flow_lim; %% branch flow limit type
 %% problem dimensions
 nb = size(bus, 1);          %% number of buses
 nl = size(branch, 1);       %% number of branches
@@ -54,193 +56,133 @@ ng = size(gen, 1);          %% number of dispatchable injections
 nxyz = length(x);           %% total number of control vars of all types
 nc = size(contingencies,1);
 
+
 %% find constrained lines
-il = find(branch(:,RATE_A) ~= 0); 
+il = find(branch(:,RATE_A) ~= 0);
 nl2 = length(il);           %% number of constrained lines
 
-%% return variable containers
+%% preallocate return variables
 g = zeros(2*nb*(nc+1),1);
+dg = sparse(length(g),nxyz);
 
-%% BASE CASE MISMATCH
-%% grab Pg & Qg
-Pg = x(vv.i1.Pg:vv.iN.Pg);  %% active generation in p.u.
-Qg = x(vv.i1.Qg:vv.iN.Qg);  %% reactive generation in p.u.
-
-%% put Pg & Qg back in gen
-gen(:, PG) = Pg * baseMVA;  %% active generation in MW
-gen(:, QG) = Qg * baseMVA;  %% reactive generation in MVAr
-
-%% ----- evaluate constraints -----
-%% reconstruct V
-Va = x(vv.i1.Va:vv.iN.Va);
-Vm = x(vv.i1.Vm:vv.iN.Vm);
-V = Vm .* exp(1j * Va);
-
-%% rebuild Sbus
-Sbus = makeSbus(baseMVA, bus, gen, mpopt, Vm);  %% net injected power in p.u.
-
-%% evaluate power flow equations
-mis = V .* conj(Ybus * V) - Sbus;
-
-g(1:2*nb) = [real(mis); imag(mis)];
-
+if nl2 % prepare for line flow constraints
+    h = zeros(2*nl*(nc+1),1);
+    dh = sparse(length(h),nxyz);
+    
+    flow_max = branch(il, RATE_A) / baseMVA;
+    flow_max(flow_max == 0) = Inf;
+    if lim_type ~= 'P'        %% typically use square of flow
+        flow_max = flow_max.^2;
+    end
+else
+    h = [];
+    dh = [];
+end
 
 % find buses in load increas area
-bcidx = find(mpc.bus2(:,LOAD_INCREASE_AREA));
-gcidx = find(mpc.gen2(:,PFIX) == 0);
+varload_idx = find(bus2(:,LOAD_INCREASE_AREA));
+pfix_idx = find(gen2(:,PFIX));
+pvar_idx = find(gen2(:,PFIX) == 0);
+baseload = bus(:,[PD QD]);
 
-Vac = zeros(nb,nc);
-Vmc = zeros(size(Vac));
-Vc = zeros(size(Vac));
-% initialize array
-if nc
-    mpc_array(nc) = mpc;
-end
-nz = nnz(g);
-for i=1:nc
-    mpcc = mpc; % get base case
-    si = num2str(i);
-    % get contingency variables
-    Pgc = x(eval(['vv.i1.Pg' si ':vv.iN.Pg' si]));
-    Qgc = x(eval(['vv.i1.Qg' si ':vv.iN.Qg' si]));
-    Vac(:,i) = x(eval(['vv.i1.Va' si ':vv.iN.Va' si]));
-    Vmc(:,i) = x(eval(['vv.i1.Vm' si ':vv.iN.Vm' si]));
-    Vc(:,i) = Vmc(:,i) .* exp(1j * Vac(:,i));
+for iii=1:nc+1     % loop over all cases, including base case
     
-    % construct generation
-    mpcc.gen(~gcidx,PG) = gen(~gcidx,PG); % insert values from base case
-    mpcc.gen(gcidx,PG) = Pgc*baseMVA; % contingency values
-    mpcc.gen(:,QG) = Qgc*baseMVA;
-    % construct load
-    mpcc.bus(bcidx,[PD QD]) = ...
-        mpcc.bus(bcidx,[PD QD]) * (1 + mpc.stabilityMargin);
+    % use admittance matrix for this contingency
+    % NOTE: Admittance matrices for different contingencies stack in a
+    % single column
+    iYbus = Ybus(1+(iii-1)*nb:iii*nb,:);
+    iYf = Yf(1+(iii-1)*nb:iii*nb,:);
+    iYt = Yt(1+(iii-1)*nb:iii*nb,:);
     
-    Sbus_c = makeSbus(baseMVA, mpcc.bus, mpcc.gen, mpopt, Vmc(:,i));
-    % note: Ybus should be reconstructed with applied contingencies
-    mis_c = Vc(:,i) .* conj(Ybus * V) - Sbus_c;
-    
-    nzr = sum(real(mis_c) ~= 0);
-    nzi = sum(imag(mis_c) ~= 0);
-    
-    g(2*nb+1+(i-1)*2*nb:2*nb+2*i*nb) = [real(mis_c); imag(mis_c)];
-    
-    mpc_array(i) = mpcc;
-    assert(nnz(g) == nz + nzr + nzi,'Overwrite existing entry in constraint g');
-    
-end
-
-
-lim_type = mpopt.opf.flow_lim;
-%% then, the inequality constraints (branch flow limits)
-if nl2 > 0
-  h = zeros(2*nl*(nc+1),1);
-  
-  flow_max = branch(il, RATE_A) / baseMVA;
-  flow_max(flow_max == 0) = Inf;
-  if lim_type ~= 'P'        %% typically use square of flow
-    flow_max = flow_max.^2;
-  end
-  
-  % loop over all cases, including base case
-  for i=1:nc+1
-  
-  if lim_type == 'I'    %% current magnitude limit, |I|
-    If = Yf * V;
-    It = Yt * V;
-    h = [ If .* conj(If) - flow_max;    %% branch current limits (from bus)
-          It .* conj(It) - flow_max ];  %% branch current limits (to bus)
-  else
-    %% compute branch power flows
-    Sf = V(branch(il, F_BUS)) .* conj(Yf * V);  %% complex power injected at "from" bus (p.u.)
-    St = V(branch(il, T_BUS)) .* conj(Yt * V);  %% complex power injected at "to" bus (p.u.)
-    if lim_type == '2'                          %% active power limit, P squared (Pan Wei)
-      h = [ real(Sf).^2 - flow_max;             %% branch real power limits (from bus)
-            real(St).^2 - flow_max ];           %% branch real power limits (to bus)
-    elseif lim_type == 'P'                      %% active power limit, P
-      h = [ real(Sf) - flow_max;                %% branch real power limits (from bus)
-            real(St) - flow_max ];              %% branch real power limits (to bus
-    else                                        %% apparent power limit, |S|
-      h = [ Sf .* conj(Sf) - flow_max;          %% branch apparent power limits (from bus)
-            St .* conj(St) - flow_max ];        %% branch apparent power limits (to bus)
+    if iii == 1 % base case
+        sidx = '';
+    else % contingency
+        sidx = num2str(iii);
     end
-  end
-  end
-else
-  h = [];
-end
-
-%%----- evaluate partials of constraints -----
-if nargout > 2
-    dg = sparse(2*nb*(nc+1),nxyz);
     
-    %% BASE CASE JACOBIAN
-    %% index ranges
-    iVa = vv.i1.Va:vv.iN.Va;
-    iVm = vv.i1.Vm:vv.iN.Vm;
-    iPg = vv.i1.Pg:vv.iN.Pg;
-    iQg = vv.i1.Qg:vv.iN.Qg;
+    Pg = x(vv.i1.(['Pg' sidx]):vv.iN.(['Pg' sidx]));
+    Qg = x(vv.i1.(['Qg' sidx]):vv.iN.(['Qg' sidx]));
+    Va = x(vv.i1.(['Va' sidx]):vv.iN.(['Va' sidx]));
+    Vm = x(vv.i1.(['Vm' sidx]):vv.iN.(['Vm' sidx]));
+    V = Vm .* exp(1j * Va);
     
-    %% compute partials of injected bus powers
-    [dSbus_dVm, dSbus_dVa] = dSbus_dV(Ybus, V);           %% w.r.t. V
-    [~, neg_dSd_dVm] = makeSbus(baseMVA, bus, gen, mpopt, Vm); % for voltage dependent loads
-    dSbus_dVm = dSbus_dVm - neg_dSd_dVm;
-    neg_Cg = sparse(gen(:, GEN_BUS), 1:ng, -1, nb, ng);   %% Pbus w.r.t. Pg
-    %% Qbus w.r.t. Qg
+    if iii == 1 % base case
+        gen(:, PG) = Pg * baseMVA;  %% active generation in MW
+    else
+        gen(pvar_idx,PG) = Pg * baseMVA;
+    end
+    gen(:, QG) = Qg * baseMVA;  %% reactive generation in MVAr
     
-    %% construct Jacobian of equality (power flow) constraints and transpose it
-    %dg = sparse(2*nb, nxyz);
-    dg(1:2*nb, [iVa iVm iPg iQg]) = [
-        real([dSbus_dVa dSbus_dVm]) neg_Cg sparse(nb, ng);  %% P mismatch w.r.t Va, Vm, Pg, Qg
-        imag([dSbus_dVa dSbus_dVm]) sparse(nb, ng) neg_Cg;  %% Q mismatch w.r.t Va, Vm, Pg, Qg
-        ];
+    % construct load
+    bus(varload_idx,[PD QD]) = ...
+        baseload(varload_idx,:) * (1 + mpc.stabilityMargin);
     
+    Sbus = makeSbus(baseMVA, bus, gen, mpopt, Vm);  %% net injected power in p.u.
     
-    %  dg = dg';
+    % evaluate power flow equations
+    mis = V .* conj(iYbus * V) - Sbus;
     
-    %% CONSTRAINT JACOBIANS
-    nz = nnz(dg);
-    for i=1:nc
+    g(1+(iii-1)*2*nb:2*iii*nb) = [real(mis); imag(mis)];
+    
+    if nl2 > 0 % then, the inequality constraints (branch flow limits)
         
-        % get var indices
-        si = num2str(i);
-        iPgc = eval(['vv.i1.Pg' si ':vv.iN.Pg' si]);
-        iQgc = eval(['vv.i1.Qg' si ':vv.iN.Qg' si]);
-        iVac = eval(['vv.i1.Va' si ':vv.iN.Va' si]);
-        iVmc = eval(['vv.i1.Vm' si ':vv.iN.Vm' si]);
-        PgcN = eval(['vv.N.Pg' si]);
-        QgcN = eval(['vv.N.Qg' si]);
+        if lim_type == 'I'    %% current magnitude limit, |I|
+            If = iYf * V;
+            It = iYt * V;
+            h = [ If .* conj(If) - flow_max;    %% branch current limits (from bus)
+                It .* conj(It) - flow_max ];  %% branch current limits (to bus)
+        else
+            %% compute branch power flows
+            Sf = V(branch(il, F_BUS)) .* conj(Yf * V);  %% complex power injected at "from" bus (p.u.)
+            St = V(branch(il, T_BUS)) .* conj(Yt * V);  %% complex power injected at "to" bus (p.u.)
+            if lim_type == '2'                          %% active power limit, P squared (Pan Wei)
+                h = [ real(Sf).^2 - flow_max;             %% branch real power limits (from bus)
+                    real(St).^2 - flow_max ];           %% branch real power limits (to bus)
+            elseif lim_type == 'P'                      %% active power limit, P
+                h = [ real(Sf) - flow_max;                %% branch real power limits (from bus)
+                    real(St) - flow_max ];              %% branch real power limits (to bus
+            else                                        %% apparent power limit, |S|
+                h = [ Sf .* conj(Sf) - flow_max;          %% branch apparent power limits (from bus)
+                    St .* conj(St) - flow_max ];        %% branch apparent power limits (to bus)
+            end
+        end
+    end
+    
+    %%----- evaluate partials of constraints -----
+    if nargout > 2
         
+        %% BASE CASE JACOBIAN
+        %% index ranges
+        iVa = vv.i1.(['Va' sidx]):vv.iN.(['Va' sidx]);
+        iVm = vv.i1.(['Vm' sidx]):vv.iN.(['Vm' sidx]);
+        iPg = vv.i1.(['Pg' sidx]):vv.iN.(['Pg' sidx]);
+        iQg = vv.i1.(['Qg' sidx]):vv.iN.(['Qg' sidx]);
+        PgcN = vv.N.(['Pg' sidx]);
         
         %% compute partials of injected bus powers
-        %% NOTE: should update Ybus if needed
-        mpc = mpc_array(i);
-        [dSbus_dVm, dSbus_dVa] = dSbus_dV(Ybus, Vc(:,i));           %% w.r.t. V
-        [~, neg_dSd_dVm] = makeSbus(baseMVA, mpc.bus, ...
-            mpc.gen, ...
-            mpopt, Vm(:,i)); % for voltage dependent loads
+        [dSbus_dVm, dSbus_dVa] = dSbus_dV(iYbus, V);           %% w.r.t. V
+        [~, neg_dSd_dVm] = makeSbus(baseMVA, bus, gen, mpopt, Vm); % for voltage dependent loads
         dSbus_dVm = dSbus_dVm - neg_dSd_dVm;
+        if iii == 1
+            neg_CgP = sparse(gen(:, GEN_BUS), 1:PgcN, -1, nb, PgcN);   %% Pbus w.r.t. Pg
+        else
+            neg_CgP = sparse(gen(pvar_idx, GEN_BUS), 1:PgcN, -1, nb, PgcN);
+        end
+        neg_CgQ = sparse(gen(:,GEN_BUS), 1:ng,-1,nb,ng); %% Qbus w.r.t. Qg
         
-        neg_CgP = sparse(mpc.gen(gcidx, GEN_BUS), 1:PgcN, -1, nb, PgcN);   %% Pbus w.r.t. Pg
-        neg_CgQ = sparse(mpc.gen(:,GEN_BUS), 1:ng,-1,nb,ng); %% Qbus w.r.t. Qg
-        
-        
-        dgc = [
+        %% construct Jacobian of equality (power flow) constraints and transpose it
+        dg(1+2*nb*(iii-1):2*nb*iii, [iVa iVm iPg iQg]) = [
             real([dSbus_dVa dSbus_dVm]) neg_CgP sparse(nb, ng);  %% P mismatch w.r.t Va, Vm, Pg, Qg
             imag([dSbus_dVa dSbus_dVm]) sparse(nb, PgcN) neg_CgQ;  %% Q mismatch w.r.t Va, Vm, Pg, Qg
             ];
-        nz_add = nnz(dgc);
-        dg([i*2*nb+1:(i+1)*2*nb], [iVac iVmc iPgc iQgc]) = dgc;
         
-        % add derivative terms wrt base case P for fixed generators
-        dg(i*2*nb+1:i*2*nb+nb,find(~gcidx)+vv.i1.Pg-1) = ones(nb,sum(~gcidx));
-        
-        assert(nz+nz_add+nb*sum(~gcidx) == nnz(dg),'Overwriting existing term in ''dg'', indexing wrong')
-        
-        
+        if PgcN < ng
+            % add derivative terms wrt base case P for fixed generators
+            dg(1+2*nb*(iii-1):nb+2*nb*(iii-1),find(pfix_idx)+vv.i1.Pg-1) = ones(nb,sum(pfix_idx));
+        end
     end
-    dg = dg';
 end
-
-dh = [];
-looptime = toc;
+% transpose jacobians
+dg = dg';
+dh = dh';
 %display(num2str(looptime))
