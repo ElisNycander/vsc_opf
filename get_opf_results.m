@@ -12,7 +12,7 @@ mpc = get_mpc(om);
 
 [contingencies,gen,bus,bus2,gen2,branch,baseMVA] = deal(mpc.contingencies,mpc.gen,mpc.bus,mpc.bus2,mpc.gen2,mpc.branch,mpc.baseMVA);
 
-nc = size(contingencies,1);
+nc = contingencies.N;
 ng = size(gen,1);
 nb = size(bus,1);
 nl = size(branch,1);

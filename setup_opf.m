@@ -13,7 +13,7 @@ define_constants;
 nb   = size(mpc.bus, 1);    %% number of buses
 nl   = size(mpc.branch, 1); %% number of branches
 ng   = size(mpc.gen, 1);    %% number of dispatchable injections
-nc   = size(contingencies,1); %% number of contingencies
+nc   = contingencies.N; %% number of contingencies
 nfix = sum(mpc.gen2(:,PFIX)); %% number of fixed generators
 ngc  = ng - nfix; %% number of generators that may increase generation in stressed cases
 
