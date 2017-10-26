@@ -93,7 +93,7 @@ for i=1:nc
     vm_idx = eval(['vv.i1.Vm' num2str(i) ':vv.iN.Vm' num2str(i)]);
     va_idx = eval(['vv.i1.Va' num2str(i) ':vv.iN.Va' num2str(i)]);
     Vm(:,i+1) = x(vm_idx);
-    Va(:,i+1) = x(vm_idx);
+    Va(:,i+1) = x(va_idx);
     
     VmU(:,i+1) = Lambda.upper(vm_idx);
     VmL(:,i+1) = Lambda.lower(vm_idx);

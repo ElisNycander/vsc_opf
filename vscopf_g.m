@@ -64,11 +64,11 @@ nl2 = length(il);           %% number of constrained lines
 
 %% preallocate return variables
 g = zeros(2*nb*(nc+1),1);
-dg = sparse(length(g),nxyz);
+dg = zeros(length(g),nxyz);
 
 if nl2 % prepare for line flow constraints
     h = zeros(2*nl*(nc+1),1);
-    dh = sparse(length(h),nxyz);
+    dh = zeros(length(h),nxyz);
     
     flow_max = branch(il, RATE_A) / baseMVA;
     flow_max(flow_max == 0) = Inf;
@@ -169,16 +169,20 @@ for i=1:nc+1     % loop over all cases, including base case
         [~, neg_dSd_dVm] = makeSbus(baseMVA, bus, gen, mpopt, Vm); % for voltage dependent loads
         dSbus_dVm = dSbus_dVm - neg_dSd_dVm;
         if i == 1
-            neg_CgP = sparse(gen(:, GEN_BUS), 1:PgcN, -1, nb, PgcN);   %% Pbus w.r.t. Pg
+            neg_CgP = zeros(nb, PgcN);
+            neg_CgP(sub2ind(size(neg_CgP),gen(:,GEN_BUS)',1:PgcN)) = -1;
+            %neg_CgP = sparse(gen(:, GEN_BUS), 1:PgcN, -1, nb, PgcN);   %% Pbus w.r.t. Pg
         else
-            neg_CgP = sparse(gen(pvar_idx, GEN_BUS), 1:PgcN, -1, nb, PgcN);
+            neg_CgP = zeros(nb, PgcN);
+            neg_CgP(sub2ind(size(neg_CgP),gen(pvar_idx,GEN_BUS)',1:PgcN)) = -1;
+            %neg_CgP = sparse(gen(pvar_idx, GEN_BUS), 1:PgcN, -1, nb, PgcN);
         end
         neg_CgQ = sparse(gen(:,GEN_BUS), 1:ng,-1,nb,ng); %% Qbus w.r.t. Qg
         
         %% construct Jacobian of equality (power flow) constraints and transpose it
         dg(1+2*nb*(i-1):2*nb*i, [iVa iVm iPg iQg]) = [
-            real([dSbus_dVa dSbus_dVm]) neg_CgP sparse(nb, ng);  %% P mismatch w.r.t Va, Vm, Pg, Qg
-            imag([dSbus_dVa dSbus_dVm]) sparse(nb, PgcN) neg_CgQ;  %% Q mismatch w.r.t Va, Vm, Pg, Qg
+            real([dSbus_dVa dSbus_dVm]) neg_CgP zeros(nb, ng);  %% P mismatch w.r.t Va, Vm, Pg, Qg
+            imag([dSbus_dVa dSbus_dVm]) zeros(nb, PgcN) neg_CgQ;  %% Q mismatch w.r.t Va, Vm, Pg, Qg
             ];
         
         if PgcN < ng

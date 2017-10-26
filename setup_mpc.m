@@ -28,6 +28,8 @@ for i=1:size(mpc.bus,1)
     if ismember(i,optns.bus.loadIncrease)
 %    if sum(mpc.bus(i,BUS_AREA) == optns.load.loadIncreaseArea) > 0
         mpc.bus2(i,LOAD_INCREASE_AREA) = 1;
+    else
+        mpc.bus2(i,LOAD_INCREASE_AREA) = 0;
     end
 end
 
