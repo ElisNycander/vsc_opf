@@ -84,6 +84,7 @@ end
 varload_idx = find(bus2(:,LOAD_INCREASE_AREA));
 busVarN = length(varload_idx);
 pfix_idx = find(gen2(:,PFIX));
+pfix_N = sum(gen2(:,PFIX));
 pvar_idx = find(gen2(:,PFIX) == 0);
 
 for i=1:nc+1     % loop over all cases, including base case
@@ -182,7 +183,7 @@ for i=1:nc+1     % loop over all cases, including base case
         
         if PgcN < ng
             % add derivative terms wrt base case P for fixed generators
-            dg(1+2*nb*(i-1):nb+2*nb*(i-1),find(pfix_idx)+vv.i1.Pg-1) = ones(nb,sum(pfix_idx));
+            dg(1+2*nb*(i-1):nb+2*nb*(i-1),pfix_idx+vv.i1.Pg-1) = ones(nb,ng-PgcN);
         end
     end
 end
