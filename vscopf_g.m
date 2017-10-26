@@ -1,4 +1,4 @@
-function [h, g, dh, dg] = vscopf_g(x, om ,Ybus,Yf,Yt, mpopt,il)
+function [h, g, dh, dg] = vscopf_g(x, om, mpopt,il)
 %function [h,g,dh,dg] = pwind_consfcn(x, om, Ybus, Yf, Yt, mpopt, il, varargin)
 %OPF_CONSFCN  Evaluates nonlinear constraints and their Jacobian for OPF.
 %   [H, G, DH, DG] = OPF_CONSFCN(X, OM, YBUS, YF, YT, MPOPT, IL)
@@ -44,8 +44,9 @@ define_constants;
 
 %% unpack data
 mpc = get_mpc(om);
-[baseMVA, bus, gen, branch,contingencies,gen2,bus2] = ...
+[baseMVA, bus, gen, branch,cs,gen2,bus2] = ...
     deal(mpc.baseMVA, mpc.bus, mpc.gen, mpc.branch,mpc.contingencies, mpc.gen2, mpc.bus2);
+[Ybus, Yf, Yt, load] = deal(cs.Ybus, cs.Yf, cs.Yt, cs.load);
 vv = get_idx(om);
 
 lim_type = mpopt.opf.flow_lim; %% branch flow limit type
@@ -54,7 +55,7 @@ nb = size(bus, 1);          %% number of buses
 nl = size(branch, 1);       %% number of branches
 ng = size(gen, 1);          %% number of dispatchable injections
 nxyz = length(x);           %% total number of control vars of all types
-nc = size(contingencies,1);
+nc = cs.N;
 
 
 %% find constrained lines
@@ -79,25 +80,25 @@ else
     dh = [];
 end
 
-% find buses in load increas area
+%find buses in load increas area
 varload_idx = find(bus2(:,LOAD_INCREASE_AREA));
+busVarN = length(varload_idx);
 pfix_idx = find(gen2(:,PFIX));
 pvar_idx = find(gen2(:,PFIX) == 0);
-baseload = bus(:,[PD QD]);
 
-for iii=1:nc+1     % loop over all cases, including base case
+for i=1:nc+1     % loop over all cases, including base case
     
     % use admittance matrix for this contingency
     % NOTE: Admittance matrices for different contingencies stack in a
     % single column
-    iYbus = Ybus(1+(iii-1)*nb:iii*nb,:);
-    iYf = Yf(1+(iii-1)*nb:iii*nb,:);
-    iYt = Yt(1+(iii-1)*nb:iii*nb,:);
+    iYbus = Ybus(1+(i-1)*nb:i*nb,:);
+    iYf = Yf(1+(i-1)*nb:i*nb,:);
+    iYt = Yt(1+(i-1)*nb:i*nb,:);
     
-    if iii == 1 % base case
+    if i == 1 % base case
         sidx = '';
     else % contingency
-        sidx = num2str(iii);
+        sidx = num2str(i-1);
     end
     
     Pg = x(vv.i1.(['Pg' sidx]):vv.iN.(['Pg' sidx]));
@@ -106,23 +107,26 @@ for iii=1:nc+1     % loop over all cases, including base case
     Vm = x(vv.i1.(['Vm' sidx]):vv.iN.(['Vm' sidx]));
     V = Vm .* exp(1j * Va);
     
-    if iii == 1 % base case
+    if i == 1 % base case
         gen(:, PG) = Pg * baseMVA;  %% active generation in MW
     else
         gen(pvar_idx,PG) = Pg * baseMVA;
     end
     gen(:, QG) = Qg * baseMVA;  %% reactive generation in MVAr
     
-    % construct load
-    bus(varload_idx,[PD QD]) = ...
-        baseload(varload_idx,:) * (1 + mpc.stabilityMargin);
+%     % increase load for contingencies
+%     if i>1
+%         bus(varload_idx,[PD QD]) = ...
+%             baseload(varload_idx,:) * (1 + mpc.stabilityMargin);
+%     end
+    bus(varload_idx,[PD QD]) = load(1+(i-1)*busVarN:i*busVarN,:);
     
     Sbus = makeSbus(baseMVA, bus, gen, mpopt, Vm);  %% net injected power in p.u.
     
     % evaluate power flow equations
     mis = V .* conj(iYbus * V) - Sbus;
     
-    g(1+(iii-1)*2*nb:2*iii*nb) = [real(mis); imag(mis)];
+    g(1+(i-1)*2*nb:2*i*nb) = [real(mis); imag(mis)];
     
     if nl2 > 0 % then, the inequality constraints (branch flow limits)
         
@@ -163,7 +167,7 @@ for iii=1:nc+1     % loop over all cases, including base case
         [dSbus_dVm, dSbus_dVa] = dSbus_dV(iYbus, V);           %% w.r.t. V
         [~, neg_dSd_dVm] = makeSbus(baseMVA, bus, gen, mpopt, Vm); % for voltage dependent loads
         dSbus_dVm = dSbus_dVm - neg_dSd_dVm;
-        if iii == 1
+        if i == 1
             neg_CgP = sparse(gen(:, GEN_BUS), 1:PgcN, -1, nb, PgcN);   %% Pbus w.r.t. Pg
         else
             neg_CgP = sparse(gen(pvar_idx, GEN_BUS), 1:PgcN, -1, nb, PgcN);
@@ -171,14 +175,14 @@ for iii=1:nc+1     % loop over all cases, including base case
         neg_CgQ = sparse(gen(:,GEN_BUS), 1:ng,-1,nb,ng); %% Qbus w.r.t. Qg
         
         %% construct Jacobian of equality (power flow) constraints and transpose it
-        dg(1+2*nb*(iii-1):2*nb*iii, [iVa iVm iPg iQg]) = [
+        dg(1+2*nb*(i-1):2*nb*i, [iVa iVm iPg iQg]) = [
             real([dSbus_dVa dSbus_dVm]) neg_CgP sparse(nb, ng);  %% P mismatch w.r.t Va, Vm, Pg, Qg
             imag([dSbus_dVa dSbus_dVm]) sparse(nb, PgcN) neg_CgQ;  %% Q mismatch w.r.t Va, Vm, Pg, Qg
             ];
         
         if PgcN < ng
             % add derivative terms wrt base case P for fixed generators
-            dg(1+2*nb*(iii-1):nb+2*nb*(iii-1),find(pfix_idx)+vv.i1.Pg-1) = ones(nb,sum(pfix_idx));
+            dg(1+2*nb*(i-1):nb+2*nb*(i-1),find(pfix_idx)+vv.i1.Pg-1) = ones(nb,sum(pfix_idx));
         end
     end
 end
