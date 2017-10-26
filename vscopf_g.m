@@ -182,8 +182,9 @@ for i=1:nc+1     % loop over all cases, including base case
             ];
         
         if PgcN < ng
+            dg(sub2ind(size(dg),gen(pfix_idx,GEN_BUS)+2*nb*(i-1),pfix_idx+vv.i1.Pg-1)) = - ones(1, ng-PgcN);
             % add derivative terms wrt base case P for fixed generators
-            dg(1+2*nb*(i-1):nb+2*nb*(i-1),pfix_idx+vv.i1.Pg-1) = ones(nb,ng-PgcN);
+            %dg(1+2*nb*(i-1):nb+2*nb*(i-1),pfix_idx+vv.i1.Pg-1) = -ones(nb,ng-PgcN);
         end
     end
 end
