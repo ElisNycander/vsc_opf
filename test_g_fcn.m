@@ -47,7 +47,9 @@ om = setup_opf(mpc,optns);
 
 % constraint function
 g_fcn = @(x)vscopf_g(x, om, optns.mpopt);
-            
+
+% hessian function
+h_fcn = @(x,lambda)vscopf_h(x,lambda,om,optns.mpopt);
             
 %% Find solution for all contingencies
 [nc,vv,baseMVA] = deal(mpc.contingencies.N,get_idx(om),mpc.baseMVA);
@@ -134,4 +136,4 @@ mdg = full(mdg);
 dg = full(dg);
 
 % compare jacobians
-[i,j] = ind2sub(size(mdg),find(mdg ~= dg))
+[i,j] = ind2sub(size(mdg),find(mdg ~= dg));
