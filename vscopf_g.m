@@ -1,4 +1,4 @@
-function [h, g, dh, dg] = vscopf_g(x, om, mpopt,il)
+function [h, g, dh, dg] = vscopf_g(x, om, mpopt)
 %function [h,g,dh,dg] = pwind_consfcn(x, om, Ybus, Yf, Yt, mpopt, il, varargin)
 %OPF_CONSFCN  Evaluates nonlinear constraints and their Jacobian for OPF.
 %   [H, G, DH, DG] = OPF_CONSFCN(X, OM, YBUS, YF, YT, MPOPT, IL)
@@ -115,11 +115,6 @@ for i=1:nc+1     % loop over all cases, including base case
     end
     gen(:, QG) = Qg * baseMVA;  %% reactive generation in MVAr
     
-%     % increase load for contingencies
-%     if i>1
-%         bus(varload_idx,[PD QD]) = ...
-%             baseload(varload_idx,:) * (1 + mpc.stabilityMargin);
-%     end
     bus(varload_idx,[PD QD]) = load(1+(i-1)*busVarN:i*busVarN,:);
     
     Sbus = makeSbus(baseMVA, bus, gen, mpopt, Vm);  %% net injected power in p.u.
