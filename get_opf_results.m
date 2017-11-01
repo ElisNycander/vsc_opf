@@ -1,4 +1,4 @@
-function [results,tab] = get_opf_results(om,x,Lambda)
+function [results,tab] = get_opf_results(om,x,Lambda,mpopt)
 
 %% for script
 % clear;
@@ -10,9 +10,9 @@ define_constants;
 [vv, ll, nn] = get_idx(om);
 mpc = get_mpc(om);
 
-[contingencies,gen,bus,bus2,gen2,branch,baseMVA] = deal(mpc.contingencies,mpc.gen,mpc.bus,mpc.bus2,mpc.gen2,mpc.branch,mpc.baseMVA);
+[cs,gen,bus,bus2,gen2,branch,baseMVA] = deal(mpc.contingencies,mpc.gen,mpc.bus,mpc.bus2,mpc.gen2,mpc.branch,mpc.baseMVA);
 
-nc = contingencies.N;
+nc = cs.N;
 ng = size(gen,1);
 nb = size(bus,1);
 nl = size(branch,1);
@@ -22,42 +22,116 @@ nl = size(branch,1);
 %% PRINT GENERATION
 
 % collect injections in matrix:
-%     P0  P1  ... Pnc (contingencies)
+%     P0  P1  ... Pnc (cs)
 % G1
 % G2
 % ...
 % Gng 
 % (generators)
 
-Pg = zeros(ng,nc+1);
-Qg = zeros(ng,nc+1);
-PgU = zeros(ng,nc+1);
-PgL = zeros(ng,nc+1);
-QgU = zeros(ng,nc+1);
-QgL = zeros(ng,nc+1);
 
-Pg(:,1) = x(vv.i1.Pg:vv.iN.Pg);
-Qg(:,1) = x(vv.i1.Qg:vv.iN.Qg);
-PgL(:,1) = Lambda.lower(vv.i1.Pg:vv.iN.Pg);
-PgU(:,1) = Lambda.upper(vv.i1.Pg:vv.iN.Pg);
-QgL(:,1) = Lambda.lower(vv.i1.Qg:vv.iN.Qg);
-QgU(:,1) = Lambda.upper(vv.i1.Qg:vv.iN.Qg);
+%% containers
+Pg = zeros(ng,nc);
+Qg = zeros(ng,nc);
+PgU = zeros(ng,nc);
+PgL = zeros(ng,nc);
+QgU = zeros(ng,nc);
+QgL = zeros(ng,nc);
 
+Vm = zeros(nb,nc);
+Va = zeros(size(Vm));
+VmU = zeros(size(Vm));
+VmL = zeros(size(Vm));
+VaU = zeros(size(Vm));
+VaL = zeros(size(Vm));
+
+Sflow = nan(nl,2*nc);
+
+ycounter = 0;
 for i=1:nc
-    % indices
-    pidxs = eval(['vv.i1.Pg' num2str(i) ':vv.iN.Pg' num2str(i)]);
-    qidxs = eval(['vv.i1.Qg' num2str(i) ':vv.iN.Qg' num2str(i)]);
-    pfix = mpc.gen2(:,PFIX) == 1;
-    qfix = mpc.gen2(:,QFIX) == 1;
+    % indices 
+    if i == 1
+        si = '';
+    else 
+        si = num2str(i);
+    end
+    iVm = vv.i1.(['Vm' si]):vv.iN.(['Vm' si]);
+    iVa = vv.i1.(['Va' si]):vv.iN.(['Va' si]);
+    iPg = vv.i1.(['Pg' si]):vv.iN.(['Pg' si]);
+    iQg = vv.i1.(['Qg' si]):vv.iN.(['Qg' si]);
     
-    Pg(~pfix,i+1) = x(pidxs);
-    Pg(pfix,i+1) = NaN;    
-    PgL(~pfix,i+1) = Lambda.lower(pidxs);
-    PgU(~pfix,i+1) = Lambda.upper(pidxs);
-    Qg(~qfix,i+1) = x(qidxs);
-    Qg(qfix,i+1) = NaN;
-    QgL(~qfix,i+1) = Lambda.lower(qidxs);
-    QgU(~qfix,i+1) = Lambda.upper(qidxs);
+    % voltages
+    Vm(:,i) = x(iVm);
+    Va(:,i) = x(iVa);
+    V = x(iVm) .* exp(1j * x(iVa));
+    
+    % generation
+    idxPfix = mpc.gen2(:,PFIX) == 1;
+    idxQfix = mpc.gen2(:,QFIX) == 1;
+    
+    idxTrip = ~cs.activeGenerators(:,i);
+    
+    idxPvar = and(~idxTrip,~idxPfix);
+    idxQvar = and(~idxTrip,~idxQfix);
+    idxActiveGenerators = cs.activeGenerators(:,i);
+    idxTrippedGenerators = ~cs.activeGenerators(:,i);
+    nActiveGenerators = cs.nActiveGenerators(i);
+    
+    if i > 1
+        Pg(idxPvar,i) = x(iPg);
+        Pg(idxPfix,i) = Pg(idxPfix,1); % store fixed values in all contingencies
+        Pg(idxTrip,i) = NaN;
+        PgL(idxPvar,i) = Lambda.lower(iPg);
+        PgU(idxPvar,i) = Lambda.upper(iPg);
+        Qg(idxQvar,i) = x(iQg);
+        Qg(idxQfix,i) = Qg(idxQfix,1); % store fixed values in all contingencies
+        Qg(idxTrip,i) = NaN;
+        QgL(idxQvar,i) = Lambda.lower(iQg);
+        QgU(idxQvar,i) = Lambda.upper(iQg);
+    else % base case
+
+        Pg(:,i) = x(iPg);
+        PgL(:,i) = Lambda.lower(iPg);
+        PgU(:,i) = Lambda.upper(iPg);
+        Qg(:,i) = x(iQg);
+        QgL(:,i) = Lambda.lower(iQg);
+        QgU(:,i) = Lambda.upper(iQg);
+    end
+        
+    % voltage limits
+    VmU(:,i) = Lambda.upper(iVm);
+    VmL(:,i) = Lambda.lower(iVm);
+    VaU(:,i) = Lambda.upper(iVa);
+    VaL(:,i) = Lambda.lower(iVa);
+    
+
+    % calculate branch flows
+    active_lines = cs.activeLines(:,i);
+    inl = sum(active_lines);
+    iYf = cs.Yf(ycounter+1:ycounter+inl,:);
+    iYt = cs.Yt(ycounter+1:ycounter+inl,:);
+    ycounter = ycounter + inl;
+    
+    if strcmp(mpopt.opf.flow_lim,'I')
+        If = iYf * V;
+        It = iYt * V;
+        Sflow(active_lines,2*i-1) = If.*conj(If);
+        Sflow(active_lines,2*i) = It.*conj(It);
+    else
+        iSf = V(branch(active_lines, F_BUS)) .* conj(iYf * V);  %% complex power injected at "from" bus (p.u.)
+        iSt = V(branch(active_lines, T_BUS)) .* conj(iYt * V);  %% complex power injected at "to" bus (p.u.)
+        
+        if strcmp(mpopt.opf.flow_lim,'P')
+            %Sf(:,i) = real(iSf)*baseMVA;
+            Sflow(active_lines,2*i-1) = real(iSf)*baseMVA;
+            Sflow(active_lines,2*i) = real(iSt)*baseMVA;
+        else
+            %Sf(:,i) = abs(iSf)*baseMVA;
+            Sflow(active_lines,2*i-1) = (abs(iSf)).^2*baseMVA;
+            Sflow(active_lines,2*i) = (abs(iSt)).^2*baseMVA;
+        end
+        
+    end    
 end
 
 % put gen bus in matrix, convert to nominal units
@@ -73,54 +147,32 @@ PgL = PgL(s,:);
 QgU = QgU(s,:);
 QgL = QgL(s,:);
 
-%% PRINT VOLTAGES
-
-Vm = zeros(nb,nc+1);
-Va = zeros(size(Vm));
-VmU = zeros(size(Vm));
-VmL = zeros(size(Vm));
-VaU = zeros(size(Vm));
-VaL = zeros(size(Vm));
-
-Vm(:,1) = x(vv.i1.Vm:vv.iN.Vm);
-Va(:,1) = x(vv.i1.Va:vv.iN.Va);
-VmL(:,1) = Lambda.lower(vv.i1.Vm:vv.iN.Vm);
-VmU(:,1) = Lambda.upper(vv.i1.Vm:vv.iN.Vm);
-VaL(:,1) = Lambda.lower(vv.i1.Va:vv.iN.Va);
-VaU(:,1) = Lambda.upper(vv.i1.Va:vv.iN.Va);
-
-for i=1:nc
-    vm_idx = eval(['vv.i1.Vm' num2str(i) ':vv.iN.Vm' num2str(i)]);
-    va_idx = eval(['vv.i1.Va' num2str(i) ':vv.iN.Va' num2str(i)]);
-    Vm(:,i+1) = x(vm_idx);
-    Va(:,i+1) = x(va_idx);
-    
-    VmU(:,i+1) = Lambda.upper(vm_idx);
-    VmL(:,i+1) = Lambda.lower(vm_idx);
-    VaU(:,i+1) = Lambda.upper(va_idx);
-    VaL(:,i+1) = Lambda.lower(va_idx);
-    
-end
-
 % put bus nr in Va
 Va = [mpc.order.bus.i2e(mpc.bus(:,BUS_I)) Va*180/pi];
 Vm = [mpc.order.bus.i2e(mpc.bus(:,BUS_I)) Vm];
 
-% sort according to external indexing
-%s = mpc.order.bus.
-%Va = Va(
+Sflow = [(1:size(branch,1))' branch(:,[F_BUS T_BUS RATE_A]) Sflow];
 
 %% make tables
 
-varnames_pg = {'BUS','PG0'};
-varnames_qg = {'BUS','QG0'};
-varnames_va = {'BUS','VA0'};
-varnames_vm = {'BUS','VM0'};
+varnames_pg = {'BUS'};
+varnames_qg = {'BUS'};
+varnames_va = {'BUS'};
+varnames_vm = {'BUS'};
+varnames_S = {'BRANCH','FROM','TO','RATE_A'};
 for i=1:nc
-    varnames_pg{i+2} = ['PG' num2str(i)];
-    varnames_qg{i+2} = ['QG' num2str(i)];
-    varnames_va{i+2} = ['VA' num2str(i)];
-    varnames_vm{i+2} = ['VM' num2str(i)];
+	if i == 1
+		stringIdx = '';
+	else
+		stringIdx = num2str(i);
+	end
+	
+    varnames_pg{i+1} = ['PG' stringIdx];
+    varnames_qg{i+1} = ['QG' stringIdx];
+    varnames_va{i+1} = ['VA' stringIdx];
+    varnames_vm{i+1} = ['VM' stringIdx];
+    varnames_S{2*i+3} = ['SF' stringIdx];
+    varnames_S{2*i+4} = ['ST' stringIdx];
 end
 
 Pg_table = array2table(Pg,...
@@ -130,8 +182,10 @@ Qg_table = array2table(Qg,...
 Vm_table = array2table(Vm,'VariableNames',varnames_vm);
 Va_table = array2table(Va,'VariableNames',varnames_va);
 
+S_table = array2table(Sflow,'VariableNames',varnames_S);
+
 tab = struct();
-[tab.Pg,tab.Qg,tab.Va,tab.Vm] = deal(Pg_table,Qg_table,Va_table,Vm_table);
+[tab.Pg,tab.Qg,tab.Va,tab.Vm, tab.S] = deal(Pg_table,Qg_table,Va_table,Vm_table, S_table);
 
 %display(Pg_table);
 
@@ -154,11 +208,11 @@ gen(:, VG) = bus(gen(:, GEN_BUS), VM);
 
 %% compute branch flows
 Sf = V(branch(:, F_BUS)) .* conj(Yf * V);  %% cplx pwr at "from" bus, p.u.
-St = V(branch(:, T_BUS)) .* conj(Yt * V);  %% cplx pwr at "to" bus, p.u.
+Sflow = V(branch(:, T_BUS)) .* conj(Yt * V);  %% cplx pwr at "to" bus, p.u.
 branch(:, PF) = real(Sf) * baseMVA;
 branch(:, QF) = imag(Sf) * baseMVA;
-branch(:, PT) = real(St) * baseMVA;
-branch(:, QT) = imag(St) * baseMVA;
+branch(:, PT) = real(Sflow) * baseMVA;
+branch(:, QT) = imag(Sflow) * baseMVA;
 
 %% multipliers for branch flows
 muSf = zeros(nl, 1);

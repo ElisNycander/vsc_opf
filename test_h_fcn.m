@@ -19,7 +19,7 @@ optns.gen.fixQg = [];
 optns.gen.maxPg = [1 3]; % generators for which to max production (must be fixed)
 optns.gen.maxPgLim = [3000];
 
-optns.branch.limit = 0; % turn on/off branch limits 
+optns.branch.limit = 1; % turn on/off branch limits 
 optns.branch.rateA = []; % branch limits
 
 %optns.load.loadIncreaseArea = 1; % areas where to increase load

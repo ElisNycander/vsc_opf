@@ -22,14 +22,14 @@ idx = logical(idx);
 
 % F: negative sum of wind
 f = -sum(x(idx));
-
+%x(idx)
 if nargout > 1
     
   %% gradient
 
     df = zeros(nxyz,1);
     df(idx) = -1;
-
+    
   %%  Hessian 
   if nargout > 2
        d2f = sparse(zeros(nxyz));

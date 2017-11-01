@@ -4,6 +4,19 @@ define_constants;
 
 mpc = eval([optns.caseFile]);
 
+%% extra generators
+ng = size(mpc.gen,1);
+ng_extra = size(optns.gen.extra,1);
+nrow = size(optns.gen.extra,2);
+% add extra generators
+mpc.gen(ng+1:ng+ng_extra,1:nrow) = optns.gen.extra;
+if ~isfield(optns.gen,'extra_cost') 
+   mpc.gencost(ng+1:ng+ng_extra,1:size(mpc.gencost,2)) = 0; 
+else
+   mpc.gencost(ng+1:ng+ng_extra,1:size(optns.gen.extra_cost,2)) = optns.gen.extra_cost;
+end
+
+%% extra lines
 
 
 %% put extra generator information into mpc struct
@@ -44,4 +57,10 @@ else
     if ~isempty(optns.branch.rateA)
     mpc.branch(:,RATE_A) = optns.branch.rateA;
     end
+end
+
+%% duplicate branches
+
+for i=1:size(optns.branch.duplicate)
+    mpc.branch = [mpc.branch; mpc.branch(optns.branch.duplicate(i),:)];
 end
