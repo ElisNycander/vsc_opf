@@ -104,7 +104,7 @@ for i=1:nc     % loop over all cases, including base case
     % pick out lines with active constraints out of lines active for this
     % contingency
     idxYbranch = idxConstrainedLines(cs.activeLines(:,i)); % indices for Yf and Yt
-    idxBranch = logical(idxConstrainedLines .* cs.activeLines(:,i)); % indices for branch
+    idxBranch = and(idxConstrainedLines, cs.activeLines(:,i)); % indices for branch
     iiYf = iYf(idxYbranch,:);
     iiYt = iYt(idxYbranch,:);
     % Note: Yf and Yt contain only active lines for a given contingency

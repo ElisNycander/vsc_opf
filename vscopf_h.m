@@ -61,7 +61,8 @@ varload_idx = find(bus2(:,LOAD_INCREASE_AREA));
 busVarN = length(varload_idx);
 % pfix_idx = find(gen2(:,PFIX));
 % pfix_N = sum(gen2(:,PFIX));
-pvar_idx = gen2(:,PFIX) == 0;
+%idxPvar = gen2(:,PFIX) == 0;
+%idxQvar = gen2(:,QFIX) == 0;
 
 nlam = length(lambda.eqnonlin) / 2 / nc;
 
@@ -81,8 +82,8 @@ for i=1:nc %% loop over all cases
     
     iVa = vv.i1.(['Va' sidx]):vv.iN.(['Va' sidx]);
     iVm = vv.i1.(['Vm' sidx]):vv.iN.(['Vm' sidx]);
-    iPg = vv.i1.(['Pg' sidx]):vv.iN.(['Pg' sidx]);
-    iQg = vv.i1.(['Qg' sidx]):vv.iN.(['Qg' sidx]);
+    %iPg = vv.i1.(['Pg' sidx]):vv.iN.(['Pg' sidx]);
+    %iQg = vv.i1.(['Qg' sidx]):vv.iN.(['Qg' sidx]);
     nBranchLimits = nn.N.(['Sf' sidx]) + nn.N.(['St' sidx]);
     nVar = vv.N.(['Pg' sidx]) + vv.N.(['Qg' sidx]) + vv.N.(['Vm' sidx]) + vv.N.(['Va' sidx]);
     
@@ -96,34 +97,17 @@ for i=1:nc %% loop over all cases
     % contingency
     idxYbranch = idxConstrainedLines(cs.activeLines(:,i)); % indices for Yf and Yt
 	idxBranch = cs.constrainedActiveLines(:,i);
+    nBranch = cs.nConstrainedActiveLines(i);
     iiYf = iYf(idxYbranch,:);
     iiYt = iYt(idxYbranch,:);
-    inl2 = sum(idxBranch);
-    
-    % NOTE: Admittance matrices for different contingencies stack in a
-    % single column
-%     iYbus = Ybus(1+(i-1)*nb:i*nb,:);
-%     iYf = Yf(1+(i-1)*nl:i*nl,:);
-%     iYt = Yt(1+(i-1)*nl:i*nl,:);
-    % pick out lines with active constraints for this contingency
-%     iiYf = iYf(idxConstrainedLines,:);
-%     iiYt = iYt(idxConstrainedLines,:);
    
 
-    Pg = x(iPg);
-    Qg = x(iQg);
+    %Pg = x(iPg);
+    %Qg = x(iQg);
     Va = x(iVa);
     Vm = x(iVm);
-    
     V = Vm .* exp(1j * Va);
     
-    
-    if i == 1 % base case
-        gen(:, PG) = Pg * baseMVA;  %% active generation in MW
-    else
-        gen(pvar_idx,PG) = Pg * baseMVA;
-    end
-    gen(:, QG) = Qg * baseMVA;  %% reactive generation in MVAr
     
     bus(varload_idx,[PD QD]) = load(1+(i-1)*busVarN:i*busVarN,:);
     
@@ -154,8 +138,8 @@ for i=1:nc %% loop over all cases
         ];
     %% evaluate Hessian of branch flow constraints 
     if nConstrainedLines
-            muF = lambda.ineqnonlin(hcounter+1:hcounter+inl2);
-            muT = lambda.ineqnonlin(1+hcounter+inl2:hcounter+2*inl2);
+            muF = lambda.ineqnonlin(hcounter+1:hcounter+nBranch);
+            muT = lambda.ineqnonlin(1+hcounter+nBranch:hcounter+2*nBranch);
             %muF = lambda.ineqnonlin(1+(i-1)*nmu:i*nmu);
             %muT = lambda.ineqnonlin(1+i*nmu:(i+1)*nmu);
        
@@ -167,8 +151,8 @@ for i=1:nc %% loop over all cases
         else
             f = branch(idxBranch, F_BUS);    %% list of "from" buses
             t = branch(idxBranch, T_BUS);    %% list of "to" buses
-            Cf = sparse(1:inl2, f, ones(inl2, 1), inl2, nb);     %% connection matrix for line & from buses
-            Ct = sparse(1:inl2, t, ones(inl2, 1), inl2, nb);     %% connection matrix for line & to buses
+            Cf = sparse(1:nBranch, f, ones(nBranch, 1), nBranch, nb);     %% connection matrix for line & from buses
+            Ct = sparse(1:nBranch, t, ones(nBranch, 1), nBranch, nb);     %% connection matrix for line & to buses
             [dSf_dVa, dSf_dVm, dSt_dVa, dSt_dVm, Sf, St] = dSbr_dV(branch(idxBranch,:), iiYf, iiYt, V);
             if lim_type == '2'        %% square of real power
                 [Hfaa, Hfav, Hfva, Hfvv] = d2ASbr_dV2(real(dSf_dVa), real(dSf_dVm), real(Sf), Cf, iiYf, V, muF);

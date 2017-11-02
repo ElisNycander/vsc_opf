@@ -12,7 +12,7 @@ optns.caseFile = 'case9';
 optns.contingencyFile = 'case9_contingencies';
 optns.stabilityMargin = 0.1;
 
-optns.hessian = 0;
+optns.hessian = 1;
 
 %% generator options
 % extra generators           
@@ -120,8 +120,10 @@ fprintf(['\nObjective function: %0.1f'],-f*mpc.baseMVA);
 [results,tab] = get_opf_results(om,x,Lambda,optns.mpopt);
 [results.et, results.f, results.success] = deal(et,f,success);
 
+success = verify_solutions(tab,om,optns);
+fprintf(['\nSolutions verified: %i'],success);
 %fd = fopen('output.txt','at');
-%printpf(results,optns.fileID);
+%printpf(results,optns.fileID);'
 
 % vv = get_idx(om);
 % tab.Qg
