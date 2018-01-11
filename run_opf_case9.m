@@ -23,23 +23,15 @@ optns.gen.extra = [
     8   100 0   0       0       1   100     1       1e3     0
 ];
 
-optns.gen.fixPg = [4 5 6]; % generators which is fixed for stressed cases
+optns.gen.fixPg = [4 6 8]; % generators which is fixed for stressed cases
 optns.gen.fixQg = [];
 
-optns.gen.maxPg = [4 5 6]; % generators for which to max production (must be fixed)
+optns.gen.maxPg = [4 6 8]; % generators for which to max production (must be fixed)
 optns.gen.maxPgLim = [3000];
 
 optns.branch.limit = 1; % turn on/off branch limits 
 optns.branch.rateA = [ % branch limits
-   150
-   250
-   150
-   250
-   150
-   150
-   250
-   250
-   150
+%150*ones(9,1)
 ];
 
 optns.branch.duplicate = []; % duplicate these branches
@@ -59,7 +51,7 @@ foptions.Display = 'off'; % off, testing, iter
 foptions.TolCon = 1e-10; % high value may give non-zero lagrange multipliers also for inactive constraints
 foptions.TolFun = 1e2;
 foptions.TolX = 1e-10;
-foptions.MaxIter = 100;
+foptions.MaxIter = 200;
 
 %% CHECK OPTIONS
 optns = check_opf_options(optns);
@@ -128,7 +120,9 @@ fprintf(['\nSolutions verified: %i'],success);
 % vv = get_idx(om);
 % tab.Qg
 % 180/pi*x(vv.i1.Va1:vv.iN.Va1)
+tab.Vm
 tab.Pg
+tab.Qg
 
 [h,g] = g_fcn(x);
 g_dev = sum(abs(g))

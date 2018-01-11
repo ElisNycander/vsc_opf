@@ -4,6 +4,9 @@ define_constants;
 
 list = eval(optns.contingencyFile);
 list = [zeros(1,size(list,2));list]; % filler row for base case
+if isempty(list) % minimal list if there are no contigencies
+    list = zeros(1,4);  
+end
 N = size(list,1);
 
 nb = size(mpc.bus,1);
