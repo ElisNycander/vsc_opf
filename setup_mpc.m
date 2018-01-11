@@ -57,7 +57,7 @@ if ~optns.branch.limit
     mpc.branch(:,RATE_A) = 0;
 else
     if ~isempty(optns.branch.rateA)
-    mpc.branch(:,RATE_A) = optns.branch.rateA;
+        mpc.branch(:,RATE_A) = optns.branch.rateA;
     end
 end
 

@@ -42,6 +42,11 @@ Pmax = gen(:, PMAX) / baseMVA;
 Qmin = gen(:, QMIN) / baseMVA;
 Qmax = gen(:, QMAX) / baseMVA;
 
+% initial variables for contingencies
+% Vac = zeros(size(Va));
+% Vmc = ones(size(Vm));
+% Qgc = zeros(size(Qg));
+Vac = Va; Vmc = Vm; Qgc = Qg;
 
 %% contingency variables
 ngc_idx = ~logical(gen2(:,PFIX));
@@ -93,12 +98,12 @@ om = opf_model(mpc);
           stringIdx = num2str(i);
           
           om = add_vars(om, ['Va' stringIdx], nb, ...
-              repmat(Va,1,1), ...
+              repmat(Vac,1,1), ...
               repmat(Val,1,1), ...
               repmat(Vau,1,1) ...
               );
           om = add_vars(om, ['Vm' stringIdx], nb, ...
-              repmat(Vm,1,1), ...
+              repmat(Vmc,1,1), ...
               repmat(bus(:,VMIN),1,1), ...
               repmat(bus(:,VMAX),1,1) ...
               );
@@ -113,7 +118,7 @@ om = opf_model(mpc);
           iPg = Pg(idxPvar);
           iPmin = Pmin(idxPvar);
           iPmax = Pmax(idxPvar);
-          iQg = Qg(idxQvar);
+          iQg = Qgc(idxQvar);
           iQmin = Qmin(idxQvar);
           iQmax = Qmax(idxQvar);
 

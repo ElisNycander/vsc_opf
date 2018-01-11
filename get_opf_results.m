@@ -1,4 +1,4 @@
-function [results,tab] = get_opf_results(om,x,Lambda,mpopt)
+function [results,tab] = get_opf_results(om,x,Lambda,optns)
 
 %% for script
 % clear;
@@ -9,7 +9,7 @@ function [results,tab] = get_opf_results(om,x,Lambda,mpopt)
 define_constants;
 [vv, ll, nn] = get_idx(om);
 mpc = get_mpc(om);
-
+mpopt = optns.mpopt;
 [cs,gen,bus,bus2,gen2,branch,baseMVA] = deal(mpc.contingencies,mpc.gen,mpc.bus,mpc.bus2,mpc.gen2,mpc.branch,mpc.baseMVA);
 
 nc = cs.N;
@@ -47,7 +47,14 @@ VaL = zeros(size(Vm));
 
 Sflow = nan(nl,2*nc);
 
-ycounter = 0;
+Sflow_lam = nan(size(Sflow));
+Pg_lamU = nan(size(Pg));
+Pg_lamL = nan(size(Pg));
+Vm_lamU = nan(size(Vm));
+Vm_lamL = nan(size(Vm));
+
+countLines = 0;
+countConstrainedLines = 1;
 for i=1:nc
     % indices 
     if i == 1
@@ -64,6 +71,9 @@ for i=1:nc
     Vm(:,i) = x(iVm);
     Va(:,i) = x(iVa);
     V = x(iVm) .* exp(1j * x(iVa));
+    % lagrange multipliers
+    %Vm_lamU(:,i) = Lambda.upper((['Vm' si]):vv.iN.(['Vm' si]));
+    %Vm_lamL(:,i) = Lambda.lower((['Vm' si]):vv.iN.(['Vm' si]));
     
     % generation
     idxPfix = mpc.gen2(:,PFIX) == 1;
@@ -107,10 +117,11 @@ for i=1:nc
 
     % calculate branch flows
     active_lines = cs.activeLines(:,i);
-    inl = sum(active_lines);
-    iYf = cs.Yf(ycounter+1:ycounter+inl,:);
-    iYt = cs.Yt(ycounter+1:ycounter+inl,:);
-    ycounter = ycounter + inl;
+    inl = cs.nActiveLines(i);
+    
+    iYf = cs.Yf(countLines+1:countLines+inl,:);
+    iYt = cs.Yt(countLines+1:countLines+inl,:);
+    
     
     if strcmp(mpopt.opf.flow_lim,'I')
         If = iYf * V;
@@ -131,12 +142,28 @@ for i=1:nc
             Sflow(active_lines,2*i) = (abs(iSt)).^2*baseMVA;
         end
         
-    end    
+    end
+    % lagrange multipliers for line constraints
+    Sflow_lam(cs.constrainedActiveLines(:,i),2*i-1) = Lambda.ineqnonlin(...
+            countConstrainedLines : countConstrainedLines + cs.nConstrainedActiveLines(i) - 1 );
+    Sflow_lam(cs.constrainedActiveLines(:,i),2*i) = Lambda.ineqnonlin(...
+            countConstrainedLines+cs.nConstrainedActiveLines(i) : ...
+            countConstrainedLines+2*cs.nConstrainedActiveLines(i) - 1);
+        
+    %% increment counters    
+    countConstrainedLines = countConstrainedLines + 2*cs.nConstrainedActiveLines(i);
+    countLines = countLines + inl;
 end
 
 % put gen bus in matrix, convert to nominal units
 Pg = [mpc.order.bus.i2e(mpc.gen(:,GEN_BUS)) Pg*mpc.baseMVA];
 Qg = [mpc.order.bus.i2e(mpc.gen(:,GEN_BUS)) Qg*mpc.baseMVA];
+busExt = mpc.order.bus.i2e(mpc.gen(:,GEN_BUS));
+PgU = [busExt PgU];
+PgL = [busExt PgL];
+QgU = [busExt QgU];
+QgL = [busExt QgL];
+
 
 s = mpc.order.gen.e2i;
 % sort according to external indexing
@@ -150,8 +177,27 @@ QgL = QgL(s,:);
 % put bus nr in Va
 Va = [mpc.order.bus.i2e(mpc.bus(:,BUS_I)) Va*180/pi];
 Vm = [mpc.order.bus.i2e(mpc.bus(:,BUS_I)) Vm];
+busExt = mpc.order.bus.i2e(mpc.bus(:,BUS_I));
+
+VmU = [busExt VmU];
+VmL = [busExt VmL];
+VaU = [busExt VaU];
+VaL = [busExt VaL];
 
 Sflow = [(1:size(branch,1))' branch(:,[F_BUS T_BUS RATE_A]) Sflow];
+Sflow_lam = [(1:size(branch,1))' branch(:,[F_BUS T_BUS RATE_A]) Sflow_lam];
+
+% set multipliers below threshold to 0
+thrs = optns.lamdaTolerance;
+Sflow_lam(Sflow_lam < thrs) = 0;
+PgU(PgU < thrs) = 0;
+PgL(PgL < thrs) = 0;
+QgU(QgU < thrs) = 0;
+QgL(QgL < thrs) = 0;
+VmU(VmU < thrs) = 0;
+VmL(VmL < thrs) = 0;
+VaU(VaU < thrs) = 0;
+VaL(VaL < thrs) = 0;
 
 %% make tables
 
@@ -182,11 +228,22 @@ Qg_table = array2table(Qg,...
 Vm_table = array2table(Vm,'VariableNames',varnames_vm);
 Va_table = array2table(Va,'VariableNames',varnames_va);
 
+Pg_lamU_table = array2table(PgU,'VariableNames',varnames_pg);
+Pg_lamL_table = array2table(PgL,'VariableNames',varnames_pg);
+Qg_lamU_table = array2table(QgU,'VariableNames',varnames_qg);
+Qg_lamL_table = array2table(QgL,'VariableNames',varnames_qg);
+Vm_lamU_table = array2table(VmU,'VariableNames',varnames_vm);
+Vm_lamL_table = array2table(VmL,'VariableNames',varnames_vm);
+Va_lamU_table = array2table(VaU,'VariableNames',varnames_va);
+Va_lamL_table = array2table(VaL,'VariableNames',varnames_va);
+
 S_table = array2table(Sflow,'VariableNames',varnames_S);
+S_lam_table = array2table(Sflow_lam,'VariableNames',varnames_S);
 
 tab = struct();
-[tab.Pg,tab.Qg,tab.Va,tab.Vm, tab.S] = deal(Pg_table,Qg_table,Va_table,Vm_table, S_table);
-
+[tab.Pg,tab.Qg,tab.Va,tab.Vm, tab.S, tab.Slam] = deal(Pg_table,Qg_table,Va_table,Vm_table, S_table, S_lam_table);
+[tab.PgUlam,tab.PgLlam,tab.QgUlam,tab.QgLlam,tab.VmUlam,tab.VmLlam,tab.VaUlam,tab.VaLlam] = ...
+    deal(Pg_lamU_table,Pg_lamL_table,Qg_lamU_table,Qg_lamL_table,Vm_lamU_table,Vm_lamL_table,Va_lamU_table,Va_lamL_table);
 %display(Pg_table);
 
 %[Vm mpc.bus(:,VMIN) mpc.bus(:,VMAX) Lambda.upper(vv.i1.Vm:vv.iN.Vm)]

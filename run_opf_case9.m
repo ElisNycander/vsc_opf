@@ -13,6 +13,9 @@ optns.contingencyFile = 'case9_contingencies';
 optns.stabilityMargin = 0.1;
 
 optns.hessian = 1;
+optns.verify = 1; % verify_solutions
+
+optns.lamdaTolerance = 1e-8; % round smaller lambda to 0 for tables
 
 %% generator options
 % extra generators           
@@ -30,8 +33,10 @@ optns.gen.maxPg = [4 6 8]; % generators for which to max production (must be fix
 optns.gen.maxPgLim = [3000];
 
 optns.branch.limit = 1; % turn on/off branch limits 
-optns.branch.rateA = [ % branch limits
-%150*ones(9,1)
+optns.branch.rateA = [ % branch limits, 0 means line is unconstrained
+    150*ones(4,1)
+    0
+    150*ones(4,1)
 ];
 
 optns.branch.duplicate = []; % duplicate these branches
@@ -59,12 +64,14 @@ optns = check_opf_options(optns);
 %% SETUP MATPOWER CASE
 mpc = setup_mpc(optns);
 
-%mpc.gen(:,PG) = [0;0;0];
-% add line
-mpc.branch = [ mpc.branch
-       %       mpc.branch(1,:)
-               ];
-        
+
+%% RUN INITIAL POWER FLOW FOR BASE CASE
+
+mpci = runpf(mpc,optns.mpopt);
+assert(mpci.success == 1,'Initial power flow was unsuccessful');
+% copy base case values, for initial guess
+mpc.gen(:,[QG PG]) = mpci.gen(:,[QG PG]);
+mpc.bus(:,[VM VA]) = mpci.bus(:,[VM VA]);
 %% CONTINGENCIES
 mpc = setup_contingencies(mpc,optns); 
 
@@ -72,8 +79,7 @@ mpc = setup_contingencies(mpc,optns);
 mpc = ext2int(mpc);
 
 
-
-%% SETUPT OPTIMIZATION OBJECT
+%% SETUP OPTIMIZATION OBJECT
 om = setup_opf(mpc,optns);
 
 % objective function
@@ -109,11 +115,13 @@ fprintf(['Time: %0.3f s'],et)
 fprintf(['\nObjective function: %0.1f'],-f*mpc.baseMVA);
 %[x0 x Lambda.lower Lambda.upper LB UB]
 
-[results,tab] = get_opf_results(om,x,Lambda,optns.mpopt);
+[results,tab] = get_opf_results(om,x,Lambda,optns);
 [results.et, results.f, results.success] = deal(et,f,success);
 
-success = verify_solutions(tab,om,optns);
-fprintf(['\nSolutions verified: %i'],success);
+if optns.verify == 1
+    success = verify_solutions(tab,om,optns);
+    fprintf(['\nSolutions verified: %i'],success);
+end
 %fd = fopen('output.txt','at');
 %printpf(results,optns.fileID);'
 
@@ -123,6 +131,8 @@ fprintf(['\nSolutions verified: %i'],success);
 tab.Vm
 tab.Pg
 tab.Qg
+tab.S
+tab.Slam
 
 [h,g] = g_fcn(x);
 g_dev = sum(abs(g))
