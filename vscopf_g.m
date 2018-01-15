@@ -82,9 +82,16 @@ end
 %find buses in load increas area
 varload_idx = find(bus2(:,LOAD_INCREASE_AREA));
 busVarN = length(varload_idx);
-idxPfix = find(gen2(:,PFIX));
-nPfix = length(idxPfix);
-pvar_idx = gen2(:,PFIX) == 0;
+
+idxPVar = gen2(:,PTYPE)== PVAR;
+idxNotPvar = find(~idxPVar);
+nNotPvar = length(idxNotPvar);
+%idxPfix = find(gen2(:,PTYPE)==PVAR);
+%nPfix = length(idxPfix);
+
+% check if base case Pg are included as optimization variables
+includePgBase = isfield(vv.i1,'Pg');
+
 
 nzcounter = 0; % count number of non-zero entries to make sure entries are not overwritten
 ycounter = 0;
@@ -116,9 +123,14 @@ for i=1:nc     % loop over all cases, including base case
     end
 	
 	%% index ranges
+    
     iVa = vv.i1.(['Va' sidx]):vv.iN.(['Va' sidx]);
     iVm = vv.i1.(['Vm' sidx]):vv.iN.(['Vm' sidx]);
-    iPg = vv.i1.(['Pg' sidx]):vv.iN.(['Pg' sidx]);
+    if i > 1 || includePgBase
+        iPg = vv.i1.(['Pg' sidx]):vv.iN.(['Pg' sidx]);
+    else % for base case when it is excluded
+        iPg = [];
+    end
     iQg = vv.i1.(['Qg' sidx]):vv.iN.(['Qg' sidx]);
     nMismatch = nn.N.(['Qmis' sidx]) + nn.N.(['Pmis' sidx]);
     nBranchLimits = nn.N.(['Sf' sidx]) + nn.N.(['St' sidx]);
@@ -131,13 +143,15 @@ for i=1:nc     % loop over all cases, including base case
     
 	bus(varload_idx,[PD QD]) = load(1+(i-1)*busVarN:i*busVarN,:);
 	
-	idxVariableGenerators = and(cs.activeGenerators(:,i),pvar_idx);
+	idxVariableGenerators = and(cs.activeGenerators(:,i),idxPVar);
     idxActiveGenerators = cs.activeGenerators(:,i);
 	idxTrippedGenerators = ~cs.activeGenerators(:,i);
-    nActiveGenerators = cs.nActiveGenerators(i);
 	
+    %% enter current values
     if i == 1 % base case
-        gen(:, PG) = Pg * baseMVA;  %% active generation in MW
+        if includePgBase
+            gen(:, PG) = Pg * baseMVA;  %% active generation in MW
+        end
 		gen(:, QG) = Qg * baseMVA;
     else
         %gen(pvar_idx,PG) = Pg * baseMVA;
@@ -194,23 +208,33 @@ for i=1:nc     % loop over all cases, including base case
         
         %% JACOBIAN FOR POWER BALANCE
         
-        nPg = vv.N.(['Pg' sidx]);
-        nQg = vv.N.(['Qg' sidx]);
         %nVar = vv.N.(['Pg' sidx]) + vv.N.(['Qg' sidx]) + vv.N.(['Vm' sidx]) + vv.N.(['Va' sidx]);
         
         %% compute partials of injected bus powers
         [dSbus_dVm, dSbus_dVa] = dSbus_dV(iYbus, V);           %% w.r.t. V
         [~, neg_dSd_dVm] = makeSbus(baseMVA, bus, gen, mpopt, Vm); % for voltage dependent loads
         dSbus_dVm = dSbus_dVm - neg_dSd_dVm;
-        if i == 1
-            neg_CgP = zeros(nb, nPg);
-            neg_CgP(sub2ind(size(neg_CgP),gen(:,GEN_BUS)',1:nPg)) = -1;
+        
+        %% dPi/dPg
+        
+        if i == 1 % base case
+            if includePgBase % include Pg for base case as optimization variables
+                nPg = vv.N.(['Pg' sidx]);
+                neg_CgP = zeros(nb, nPg);
+                neg_CgP(sub2ind(size(neg_CgP),gen(:,GEN_BUS)',1:nPg)) = -1;
+            else % base case Pg taken as parameters
+                nPg = 0;
+                neg_CgP = zeros(nb,nPg);
+            end
             %neg_CgP = sparse(gen(:, GEN_BUS), 1:PgcN, -1, nb, PgcN);   %% Pbus w.r.t. Pg
-        else
+        else % contingency cases, must always be one Pg which can be changed
+            nPg = vv.N.(['Pg' sidx]);
             neg_CgP = zeros(nb, nPg);
             neg_CgP(sub2ind(size(neg_CgP),gen(idxVariableGenerators,GEN_BUS)',1:nPg)) = -1;
             %neg_CgP = sparse(gen(pvar_idx, GEN_BUS), 1:PgcN, -1, nb, PgcN);
         end
+        %% dQi/dQg
+        nQg = vv.N.(['Qg' sidx]);
         neg_CgQ = zeros(nb, nQg);
         neg_CgQ(sub2ind([nb nQg],gen(idxActiveGenerators,GEN_BUS)',1:nQg)) = -1;
         %neg_CgQ = sparse(gen(idxActiveGenerators,GEN_BUS), 1:ng,-1,nb,ng); %% Qbus w.r.t. Qg
@@ -221,10 +245,8 @@ for i=1:nc     % loop over all cases, including base case
             imag([dSbus_dVa dSbus_dVm]) zeros(nb, nPg) neg_CgQ;  %% Q mismatch w.r.t Va, Vm, Pg, Qg
             ];
         
-        if nPg < ng
-            dg(sub2ind(size(dg),gen(idxPfix,GEN_BUS)+2*nb*(i-1),idxPfix+vv.i1.Pg-1)) = - ones(1, nPfix);
-            % add derivative terms wrt base case P for fixed generators
-            %dg(1+2*nb*(i-1):nb+2*nb*(i-1),pfix_idx+vv.i1.Pg-1) = -ones(nb,ng-PgcN);
+        if nPg < ng && includePgBase %% dPi/dPg(base case) for contingency cases
+            dg(sub2ind(size(dg),gen(idxNotPvar,GEN_BUS)+2*nb*(i-1),idxNotPvar+vv.i1.Pg-1)) = - ones(1, nNotPvar);
         end
 
        

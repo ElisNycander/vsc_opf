@@ -26,11 +26,17 @@ end
 % gen2
 mpc.gen2 = [];
 for i=1:size(mpc.gen,1)
-    mpc.gen2(i,[GEN_BUS PMAXIMIZE PFIX QFIX]) = ...
+    mpc.gen2(i,[GEN_BUS PMAXIMIZE]) = ...
         [mpc.gen(i,GEN_BUS) ...
-         ismember(mpc.gen(i,GEN_BUS),optns.gen.maxPg) ...
-         ismember(mpc.gen(i,GEN_BUS),optns.gen.fixPg) ...
-         ismember(mpc.gen(i,GEN_BUS),optns.gen.fixQg)];
+         ismember(i,optns.gen.maxPg) ...
+      ];
+    if ismember(i,optns.gen.fixedP)
+        mpc.gen2(i,PTYPE) = PFIX;
+    elseif ismember(i,optns.gen.curtailableP)
+        mpc.gen2(i,PTYPE) = PCUR;
+    else
+        mpc.gen2(i,PTYPE) = PVAR;
+    end
 end
 
 % change limits of generators which are being maximized

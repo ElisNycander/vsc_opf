@@ -12,7 +12,7 @@ N = size(list,1);
 nb = size(mpc.bus,1);
 nl = size(mpc.branch,1);
 ng = size(mpc.gen,1);
-[bus,bus2,branch] = deal(mpc.bus,mpc.bus2,mpc.branch);
+[bus,bus2,branch,gen2] = deal(mpc.bus,mpc.bus2,mpc.branch,mpc.gen2);
 
 % find lines with constraints
 if optns.branch.limit

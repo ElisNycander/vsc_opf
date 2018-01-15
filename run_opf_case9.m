@@ -12,7 +12,7 @@ optns.caseFile = 'case9';
 optns.contingencyFile = 'case9_contingencies';
 optns.stabilityMargin = 0.1;
 
-optns.hessian = 1;
+optns.hessian = 0;
 optns.verify = 1; % verify_solutions
 
 optns.lamdaTolerance = 1e-8; % round smaller lambda to 0 for tables
@@ -21,22 +21,30 @@ optns.lamdaTolerance = 1e-8; % round smaller lambda to 0 for tables
 % extra generators           
 %	bus	Pg	Qg	Qmax	Qmin	Vg	mBase	status	Pmax	Pmin	           
 optns.gen.extra = [
-    4   100 0   0       0       1   100     1       1e3     0
-    6   100 0   0       0       1   100     1       1e3     0
-    8   100 0   0       0       1   100     1       1e3     0
+    4   10 0   0       0       1   100     1       1e3     0
+    6   10 0   0       0       1   100     1       1e3     0
+    8   10 0   0       0       1   100     1       1e3     0
 ];
 
-optns.gen.fixPg = [4 6 8]; % generators which is fixed for stressed cases
-optns.gen.fixQg = [];
+%% the active power of generators can either be:
+% 1 Variable - can vary freely for all contingencies
+% 2 Fixed - set by base case power flow
+% 3 Curtailable - can be curtailed relative to base case in contingencies
+% Note: Variable is default
+optns.gen.fixedP = [4 5];
+optns.gen.curtailableP = [6];
+optns.gen.variableP = [1 2 3];
+% include non-variable p in optimization or not, may take given values as "market outcome"
+optns.gen.optimizeBaseP = 0; 
 
-optns.gen.maxPg = [4 6 8]; % generators for which to max production (must be fixed)
+optns.gen.maxPg = [1:6]; % generators for which to max production (must be fixed)
 optns.gen.maxPgLim = [3000];
 
 optns.branch.limit = 1; % turn on/off branch limits 
 optns.branch.rateA = [ % branch limits, 0 means line is unconstrained
-    150*ones(4,1)
-    0
-    150*ones(4,1)
+    250*ones(4,1)
+    250
+    250*ones(4,1)
 ];
 
 optns.branch.duplicate = []; % duplicate these branches
@@ -54,7 +62,7 @@ foptions = optimoptions('fmincon','Algorithm','interior-point','GradObj','on','G
 
 foptions.Display = 'off'; % off, testing, iter
 foptions.TolCon = 1e-10; % high value may give non-zero lagrange multipliers also for inactive constraints
-foptions.TolFun = 1e2;
+foptions.TolFun = 1e0;
 foptions.TolX = 1e-10;
 foptions.MaxIter = 200;
 
@@ -83,7 +91,7 @@ mpc = ext2int(mpc);
 om = setup_opf(mpc,optns);
 
 % objective function
-f_fcn = @(x)vscopf_f_maxPg(x, om);
+f_fcn = @(x)vscopf_f_minCurtail(x, om);
 % constraint function
 g_fcn = @(x)vscopf_g(x, om, optns.mpopt);
 if optns.hessian % hessian function

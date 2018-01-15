@@ -55,6 +55,12 @@ Vm_lamL = nan(size(Vm));
 
 countLines = 0;
 countConstrainedLines = 1;
+
+if isfield(vv.i1,'Pg')
+    includePgBase = 1;
+else
+    includePgBase = 0;
+end
 for i=1:nc
     % indices 
     if i == 1
@@ -62,9 +68,14 @@ for i=1:nc
     else 
         si = num2str(i);
     end
+    
     iVm = vv.i1.(['Vm' si]):vv.iN.(['Vm' si]);
     iVa = vv.i1.(['Va' si]):vv.iN.(['Va' si]);
-    iPg = vv.i1.(['Pg' si]):vv.iN.(['Pg' si]);
+    if i > 1 || includePgBase
+        iPg = vv.i1.(['Pg' si]):vv.iN.(['Pg' si]);
+    else
+        iPg = [];
+    end
     iQg = vv.i1.(['Qg' si]):vv.iN.(['Qg' si]);
     
     % voltages
@@ -76,33 +87,39 @@ for i=1:nc
     %Vm_lamL(:,i) = Lambda.lower((['Vm' si]):vv.iN.(['Vm' si]));
     
     % generation
-    idxPfix = mpc.gen2(:,PFIX) == 1;
-    idxQfix = mpc.gen2(:,QFIX) == 1;
-    
     idxTrip = ~cs.activeGenerators(:,i);
     
-    idxPvar = and(~idxTrip,~idxPfix);
-    idxQvar = and(~idxTrip,~idxQfix);
+    %idxPfix = mpc.gen2(:,PTYPE) == PFIX;
+    idxPvar = and(mpc.gen2(:,PTYPE) == PVAR,~idxTrip);
+    idxQvar = ~idxTrip;
+    
+    
+    %idxPvar = and(~idxTrip,idxPVar);
+    %idxQvar = and(~idxTrip,idxQVar);
     idxActiveGenerators = cs.activeGenerators(:,i);
     idxTrippedGenerators = ~cs.activeGenerators(:,i);
     nActiveGenerators = cs.nActiveGenerators(i);
     
     if i > 1
         Pg(idxPvar,i) = x(iPg);
-        Pg(idxPfix,i) = Pg(idxPfix,1); % store fixed values in all contingencies
+        Pg(~idxPvar,i) = Pg(~idxPvar,1); % store fixed values in all contingencies
         Pg(idxTrip,i) = NaN;
         PgL(idxPvar,i) = Lambda.lower(iPg);
         PgU(idxPvar,i) = Lambda.upper(iPg);
         Qg(idxQvar,i) = x(iQg);
-        Qg(idxQfix,i) = Qg(idxQfix,1); % store fixed values in all contingencies
+        Qg(~idxQvar,i) = Qg(~idxQvar,1); % store fixed values in all contingencies
         Qg(idxTrip,i) = NaN;
         QgL(idxQvar,i) = Lambda.lower(iQg);
         QgU(idxQvar,i) = Lambda.upper(iQg);
     else % base case
-
-        Pg(:,i) = x(iPg);
-        PgL(:,i) = Lambda.lower(iPg);
-        PgU(:,i) = Lambda.upper(iPg);
+        if includePgBase
+            Pg(:,i) = x(iPg);
+            PgL(:,i) = Lambda.lower(iPg);
+            PgU(:,i) = Lambda.upper(iPg);
+        else
+            Pg(:,i) = mpc.gen(:,PG)/mpc.baseMVA; % get pre-set Pg values
+        end
+        
         Qg(:,i) = x(iQg);
         QgL(:,i) = Lambda.lower(iQg);
         QgU(:,i) = Lambda.upper(iQg);
@@ -251,41 +268,41 @@ tab = struct();
 
 %% STORE BASE RESULTS IN MPC STRUCT
 
-V = Vm(:,2) .* exp(1j * pi/180*Va(:,2));
-
-% store base case voltages
-bus(:,VM) = Vm(:,2);
-bus(:,VA) = Va(:,2);
-% store base case generation
-gen(:,PG) = Pg(:,2);
-gen(:,QG) = Qg(:,2);
-
-% copy bus voltages back to gen matrix
-gen(:, VG) = bus(gen(:, GEN_BUS), VM);
-
-%% compute branch flows
-Sf = V(branch(:, F_BUS)) .* conj(Yf * V);  %% cplx pwr at "from" bus, p.u.
-Sflow = V(branch(:, T_BUS)) .* conj(Yt * V);  %% cplx pwr at "to" bus, p.u.
-branch(:, PF) = real(Sf) * baseMVA;
-branch(:, QF) = imag(Sf) * baseMVA;
-branch(:, PT) = real(Sflow) * baseMVA;
-branch(:, QT) = imag(Sflow) * baseMVA;
+% V = Vm(:,2) .* exp(1j * pi/180*Va(:,2));
+% 
+% % store base case voltages
+% bus(:,VM) = Vm(:,2);
+% bus(:,VA) = Va(:,2);
+% % store base case generation
+% gen(:,PG) = Pg(:,2);
+% gen(:,QG) = Qg(:,2);
+% 
+% % copy bus voltages back to gen matrix
+% gen(:, VG) = bus(gen(:, GEN_BUS), VM);
+% 
+% %% compute branch flows
+% Sf = V(branch(:, F_BUS)) .* conj(Yf * V);  %% cplx pwr at "from" bus, p.u.
+% Sflow = V(branch(:, T_BUS)) .* conj(Yt * V);  %% cplx pwr at "to" bus, p.u.
+% branch(:, PF) = real(Sf) * baseMVA;
+% branch(:, QF) = imag(Sf) * baseMVA;
+% branch(:, PT) = real(Sflow) * baseMVA;
+% branch(:, QT) = imag(Sflow) * baseMVA;
 
 %% multipliers for branch flows
-muSf = zeros(nl, 1);
-muSt = zeros(nl, 1);
+% muSf = zeros(nl, 1);
+% muSt = zeros(nl, 1);
 
 %% update Lagrange multipliers
-bus(:, MU_VMAX)  = Lambda.upper(vv.i1.Vm:vv.iN.Vm);
-bus(:, MU_VMIN)  = Lambda.lower(vv.i1.Vm:vv.iN.Vm);
-gen(:, MU_PMAX)  = Lambda.upper(vv.i1.Pg:vv.iN.Pg) / baseMVA;
-gen(:, MU_PMIN)  = Lambda.lower(vv.i1.Pg:vv.iN.Pg) / baseMVA;
-gen(:, MU_QMAX)  = Lambda.upper(vv.i1.Qg:vv.iN.Qg) / baseMVA;
-gen(:, MU_QMIN)  = Lambda.lower(vv.i1.Qg:vv.iN.Qg) / baseMVA;
-bus(:, LAM_P)    = Lambda.eqnonlin(nn.i1.Pmis:nn.iN.Pmis) / baseMVA;
-bus(:, LAM_Q)    = Lambda.eqnonlin(nn.i1.Qmis:nn.iN.Qmis) / baseMVA;
-branch(:, MU_SF) = muSf / baseMVA;
-branch(:, MU_ST) = muSt / baseMVA;
+% bus(:, MU_VMAX)  = Lambda.upper(vv.i1.Vm:vv.iN.Vm);
+% bus(:, MU_VMIN)  = Lambda.lower(vv.i1.Vm:vv.iN.Vm);
+% gen(:, MU_PMAX)  = Lambda.upper(vv.i1.Pg:vv.iN.Pg) / baseMVA;
+% gen(:, MU_PMIN)  = Lambda.lower(vv.i1.Pg:vv.iN.Pg) / baseMVA;
+% gen(:, MU_QMAX)  = Lambda.upper(vv.i1.Qg:vv.iN.Qg) / baseMVA;
+% gen(:, MU_QMIN)  = Lambda.lower(vv.i1.Qg:vv.iN.Qg) / baseMVA;
+% bus(:, LAM_P)    = Lambda.eqnonlin(nn.i1.Pmis:nn.iN.Pmis) / baseMVA;
+% bus(:, LAM_Q)    = Lambda.eqnonlin(nn.i1.Qmis:nn.iN.Qmis) / baseMVA;
+% branch(:, MU_SF) = muSf / baseMVA;
+% branch(:, MU_ST) = muSt / baseMVA;
 
 results = mpc;
 [results.bus, results.branch, results.gen, results.gen2, results.bus2, ...

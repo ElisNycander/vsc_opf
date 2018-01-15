@@ -7,17 +7,22 @@ define_constants;
 
 
 %% assign variables for simplicity
-[mpopt,gen2,cs] = deal(optns.mpopt,mpc.gen2,mpc.contingencies);
+[mpopt,cs] = deal(optns.mpopt,mpc.contingencies);
 
 %% data dimensions
 nb   = size(mpc.bus, 1);    %% number of buses
 nl   = size(mpc.branch, 1); %% number of branches
 ng   = size(mpc.gen, 1);    %% number of dispatchable injections
 nc   = cs.N; %% number of contingencies
-nPfix = sum(mpc.gen2(:,PFIX)); %% number of fixed generators
-nQfix = sum(mpc.gen2(:,QFIX));
-idxPfix = mpc.gen2(:,PFIX) == 1;
-idxQfix = mpc.gen2(:,QFIX) == 1;
+
+
+% nFix = sum(mpc.gen2(:,PTYPE)==PFIX);
+% nVar = sum(mpc.gen2(:,PTYPE)==PVAR);
+% nCur = sum(mpc.gen2(:,PTYPE)==PCUR);
+
+idxPVar = mpc.gen2(:,PTYPE)==PVAR;
+
+idxQVar = ones(ng,1);
 
 if optns.branch.limit
     idxConstrainedLines = mpc.branch(:,RATE_A) ~= 0;
@@ -48,12 +53,6 @@ Qmax = gen(:, QMAX) / baseMVA;
 % Qgc = zeros(size(Qg));
 Vac = Va; Vmc = Vm; Qgc = Qg;
 
-%% contingency variables
-ngc_idx = ~logical(gen2(:,PFIX));
-% only some generator may vary active power
-Pg_c = Pg(ngc_idx);
-Pmin_c = Pmin(ngc_idx);
-Pmax_c = Pmax(ngc_idx);
 
 %% warn if there is more than one reference bus
 refs = find(bus(:, BUS_TYPE) == REF);
@@ -84,8 +83,11 @@ om = opf_model(mpc);
           % base case
           om = add_vars(om, 'Va', nb, Va, Val, Vau);
           om = add_vars(om, 'Vm', nb, Vm, bus(:, VMIN), bus(:, VMAX));
-          om = add_vars(om, 'Pg', ng, Pg, Pmin, Pmax);
+          if optns.gen.optimizeBaseP % include active power for base case as optimization variables
+            om = add_vars(om, 'Pg', ng, Pg, Pmin, Pmax);
+          end
           om = add_vars(om, 'Qg', ng, Qg, Qmin, Qmax);
+          
           
           om = add_constraints(om, 'Pmis', nb, 'nonlinear');
           om = add_constraints(om, 'Qmis', nb, 'nonlinear');
@@ -96,6 +98,9 @@ om = opf_model(mpc);
       else
           
           stringIdx = num2str(i);
+          
+          % add curtailment fractions
+          % NOT IMPLEMENTED
           
           om = add_vars(om, ['Va' stringIdx], nb, ...
               repmat(Vac,1,1), ...
@@ -110,8 +115,8 @@ om = opf_model(mpc);
           % note: number of generators may change if contingency includes
           % outage of generator
           
-          idxQvar = and(cs.activeGenerators(:,i), ~idxQfix);
-          idxPvar = and(cs.activeGenerators(:,i), ~idxPfix);
+          idxQvar = and(cs.activeGenerators(:,i), idxQVar);
+          idxPvar = and(cs.activeGenerators(:,i), idxPVar);
           nQvar = sum(idxQvar);
           nPvar = sum(idxPvar);
 
@@ -122,7 +127,7 @@ om = opf_model(mpc);
           iQmin = Qmin(idxQvar);
           iQmax = Qmax(idxQvar);
 
-          %ngc  = ng - nfix; %% number of generators that may increase generation in stressed cases
+          % add P and Q for variable generators
           om = add_vars(om, ['Pg' stringIdx], nPvar, iPg, iPmin, iPmax);
           om = add_vars(om, ['Qg' stringIdx], nQvar, iQg, iQmin, iQmax);
           
