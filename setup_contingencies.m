@@ -9,10 +9,19 @@ if isempty(list) % minimal list if there are no contigencies
 end
 N = size(list,1);
 
+% add column with wind scenarios
+if size(list,2) < CONT_WIND_SCENARIO
+    list = [list zeros(size(list,1),1)];
+end
+
 nb = size(mpc.bus,1);
 nl = size(mpc.branch,1);
 ng = size(mpc.gen,1);
-[bus,bus2,branch,gen2] = deal(mpc.bus,mpc.bus2,mpc.branch,mpc.gen2);
+
+[bus,bus2,branch,gen2,gen] = deal(mpc.bus,mpc.bus2,mpc.branch,mpc.gen2,mpc.gen);
+
+idxCurtail = find(gen2(:,PTYPE) == PCUR);
+nCurtail = length(idxCurtail);
 
 % find lines with constraints
 if optns.branch.limit
@@ -33,6 +42,7 @@ Ybus = sparse(N*nb,nb);
 Yf = sparse(N*nl,nb);
 Yt = sparse(N*nl,nb);
 load = sparse(N*busVarN,2); % container for load [PD QD]
+wind = zeros(N*nCurtail,1); % container for wind scenarios
 activeLines = true(nl,N);
 constrainedActiveLines = false(nl,N);
 activeGenerators = true(ng,N);
@@ -42,7 +52,18 @@ for i=1:N
     inl = nl;
     impc = mpc;
     if i > 1 % contingency
+        
+        % apply load increase
         load_mult = list(i,CONT_LOAD_MULT);
+        
+        % apply wind scenario
+        if list(i,CONT_WIND_SCENARIO)
+            wind(1+(i-1)*nCurtail:i*nCurtail) = optns.gen.windScenarios(:,...
+                list(i,CONT_WIND_SCENARIO) );
+        else % use base case values
+             wind(1+(i-1)*nCurtail:i*nCurtail) = gen(idxCurtail,PG);
+        end
+        
         % apply contingency
         switch list(i,CONT_TYPE) %% NOTE: mpc is internal indexing, contingency list external
             case NO_FAULT % no change
@@ -70,6 +91,8 @@ for i=1:N
         end
     else % base case
         load_mult = 1;
+        % enter original PG into wind vector
+        wind(1:nCurtail) = mpc.gen(mpc.gen2(:,PTYPE)==PCUR,PG);
     end
     
     if nl2 % prepare for line flow constraints
@@ -99,7 +122,7 @@ nActiveLines = sum(activeLines,1);
 nActiveGenerators = sum(activeGenerators,1);
 
 c = struct(); % create struct
-[c.list, c.N, c.Ybus, c.Yf, c.Yt, c.load, c.activeLines, c.nActiveLines, c.activeGenerators, c.nActiveGenerators, c.constrainedActiveLines, c.nConstrainedActiveLines]...
-	= deal(list,N,Ybus,Yf,Yt,load, activeLines, nActiveLines, activeGenerators, nActiveGenerators, constrainedActiveLines, nConstrainedActiveLines); % assign elements to struct
+[c.list, c.N, c.Ybus, c.Yf, c.Yt, c.load, c.activeLines, c.nActiveLines, c.activeGenerators, c.nActiveGenerators, c.constrainedActiveLines, c.nConstrainedActiveLines, c.wind]...
+	= deal(list,N,Ybus,Yf,Yt,load, activeLines, nActiveLines, activeGenerators, nActiveGenerators, constrainedActiveLines, nConstrainedActiveLines,wind); % assign elements to struct
 mpc.contingencies = c; % save struct in mpc
 end

@@ -7,17 +7,21 @@ define_constants;
 %% unpack data
 mpc = get_mpc(om);
 vv = get_idx(om);
-
+wind = mpc.contingencies.wind/mpc.baseMVA; % wind scenarios
+nCurtail = length(find(mpc.gen2(mpc.gen2(:,PTYPE) == PCUR)));
 %% problem dimensions
 nxyz = length(x);           %% total number of control vars of all types
 
-%% grab Pg & Qg
-%Pg = x(vv.i1.Pg:vv.iN.Pg);  %% active generation in p.u.
+idx = false(1,nxyz);
 
-%widx = find(mpc.gen2(:,PMAXIMIZE));
+for i=2:mpc.contingencies.N % note: no curtailment for base case
+   sidx = num2str(i); 
+   idx(vv.i1.(['Beta' sidx]):vv.iN.(['Beta' sidx])) = true; 
+end
+f = sum( x(idx) .* wind(nCurtail+1:end) );
 
-% maximize voltage at all buses for base case
-idx = zeros(1,nxyz);
+
+
 % idx(vv.i1.Vm:vv.iN.Vm) = 1;
 % idx = logical(idx);
 
@@ -36,20 +40,20 @@ idx = zeros(1,nxyz);
 % end
 
 % maximize Qg from generator 1
-idx(vv.i1.Qg) = 1;
-        
-idx = logical(idx);
-    
-
-% F: negative sum of wind
-f = -sum(x(idx));
+% idx(vv.i1.Qg) = 1;
+%         
+% idx = logical(idx);
+%     
+% 
+% % F: negative sum of wind
+% f = -sum(x(idx));
 %x(idx)
 if nargout > 1
     
   %% gradient
 
     df = zeros(nxyz,1);
-    df(idx) = -1;
+    df(idx) = wind(nCurtail+1:end);
     
   %%  Hessian 
   if nargout > 2

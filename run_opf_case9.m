@@ -40,6 +40,13 @@ optns.gen.optimizeBaseP = 0;
 optns.gen.maxPg = [1:6]; % generators for which to max production (must be fixed)
 optns.gen.maxPgLim = [3000];
 
+% wind power scenarios - stored in columns, with as many rows as there are
+% curtailable generators, or just one row, in which case the same scenario
+% is applied to all curtailable generators
+optns.gen.windScenarios = [
+    20 400
+];
+
 optns.branch.limit = 1; % turn on/off branch limits 
 optns.branch.rateA = [ % branch limits, 0 means line is unconstrained
     250*ones(4,1)
@@ -51,6 +58,8 @@ optns.branch.duplicate = []; % duplicate these branches
 
 %optns.load.loadIncreaseArea = 1; % areas where to increase load
 optns.bus.loadIncrease = [5 7 9]; % buses with load increase for contingencies
+
+
 %% matpower options
 optns.mpopt = mpoption();
 

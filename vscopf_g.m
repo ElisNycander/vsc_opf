@@ -79,6 +79,10 @@ else
     dh = [];
 end
 
+% curtailable generators
+idxPCurtail = find(gen2(:,PTYPE)==PCUR);
+nPCurtail = length(idxPCurtail);
+
 %find buses in load increas area
 varload_idx = find(bus2(:,LOAD_INCREASE_AREA));
 busVarN = length(varload_idx);
@@ -99,6 +103,8 @@ hcounter = 0; % counter for rows in h, dh
 gcounter = 0;
 for i=1:nc     % loop over all cases, including base case
     
+    iWind = cs.wind(1+(i-1)*nPCurtail:i*nPCurtail);
+
     % use admittance matrix for this contingency
     
     % NOTE: Admittance matrices for different contingencies stack in a
@@ -132,6 +138,13 @@ for i=1:nc     % loop over all cases, including base case
         iPg = [];
     end
     iQg = vv.i1.(['Qg' sidx]):vv.iN.(['Qg' sidx]);
+    
+    if i > 1
+        iBeta = vv.i1.(['Beta' sidx]):vv.iN.(['Beta' sidx]);
+    else
+        iBeta = [];
+    end
+    
     nMismatch = nn.N.(['Qmis' sidx]) + nn.N.(['Pmis' sidx]);
     nBranchLimits = nn.N.(['Sf' sidx]) + nn.N.(['St' sidx]);
     
@@ -160,6 +173,8 @@ for i=1:nc     % loop over all cases, including base case
 		
 		gen(idxVariableGenerators,PG) = Pg*baseMVA;
 		gen(idxActiveGenerators,QG) = Qg*baseMVA;
+        % enter wind scenarios
+        gen(idxPCurtail,PG) = iWind.*(1-x(iBeta));
     end
 	
     Sbus = makeSbus(baseMVA, bus, gen, mpopt, Vm);  %% net injected power in p.u.
@@ -216,7 +231,6 @@ for i=1:nc     % loop over all cases, including base case
         dSbus_dVm = dSbus_dVm - neg_dSd_dVm;
         
         %% dPi/dPg
-        
         if i == 1 % base case
             if includePgBase % include Pg for base case as optimization variables
                 nPg = vv.N.(['Pg' sidx]);
@@ -226,23 +240,28 @@ for i=1:nc     % loop over all cases, including base case
                 nPg = 0;
                 neg_CgP = zeros(nb,nPg);
             end
+            %% dPi/dBeta
+            dPdBeta = zeros(nb,length(iBeta));
             %neg_CgP = sparse(gen(:, GEN_BUS), 1:PgcN, -1, nb, PgcN);   %% Pbus w.r.t. Pg
         else % contingency cases, must always be one Pg which can be changed
             nPg = vv.N.(['Pg' sidx]);
             neg_CgP = zeros(nb, nPg);
             neg_CgP(sub2ind(size(neg_CgP),gen(idxVariableGenerators,GEN_BUS)',1:nPg)) = -1;
             %neg_CgP = sparse(gen(pvar_idx, GEN_BUS), 1:PgcN, -1, nb, PgcN);
+            dPdBeta = zeros(nb,nPCurtail);
+            dPdBeta( sub2ind( size(dPdBeta),gen(idxPCurtail,GEN_BUS)',1:size(dPdBeta,2) ) ) = iWind/baseMVA;
+            %dQdBeta = zeros(nb,nPCurtail)
         end
         %% dQi/dQg
         nQg = vv.N.(['Qg' sidx]);
         neg_CgQ = zeros(nb, nQg);
         neg_CgQ(sub2ind([nb nQg],gen(idxActiveGenerators,GEN_BUS)',1:nQg)) = -1;
         %neg_CgQ = sparse(gen(idxActiveGenerators,GEN_BUS), 1:ng,-1,nb,ng); %% Qbus w.r.t. Qg
-        
+        dQdBeta = zeros(nb,length(iBeta));
         %% construct Jacobian of equality (power flow) constraints and transpose it
-        dg(1+2*nb*(i-1):2*nb*i, [iVa iVm iPg iQg]) = [
-            real([dSbus_dVa dSbus_dVm]) neg_CgP zeros(nb, nQg);  %% P mismatch w.r.t Va, Vm, Pg, Qg
-            imag([dSbus_dVa dSbus_dVm]) zeros(nb, nPg) neg_CgQ;  %% Q mismatch w.r.t Va, Vm, Pg, Qg
+        dg(1+2*nb*(i-1):2*nb*i, [iVa iVm iPg iQg iBeta]) = [
+            real([dSbus_dVa dSbus_dVm]) neg_CgP zeros(nb, nQg) dPdBeta;  %% P mismatch w.r.t Va, Vm, Pg, Qg
+            imag([dSbus_dVa dSbus_dVm]) zeros(nb, nPg) neg_CgQ dQdBeta;  %% Q mismatch w.r.t Va, Vm, Pg, Qg
             ];
         
         if nPg < ng && includePgBase %% dPi/dPg(base case) for contingency cases

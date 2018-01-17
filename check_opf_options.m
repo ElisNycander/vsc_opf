@@ -7,6 +7,12 @@ if ~isempty(optns.outputFile)
 else
     optns.fileID = '';
 end
+
+if size(optns.gen.windScenarios,1) > 1 && not(optns.OptimizeBaseP)
+    if length(optns.gen.curtailableP) ~= size(optns.windScenarios,1)
+        error('The size of windScenarios does not match number of curtailable generators');
+    end
+end
 %optns.mpopt.opf.violation = optns.foptions.TolCon;
 
 

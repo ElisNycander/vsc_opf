@@ -19,6 +19,8 @@ nl = size(branch,1);
 
 [~,Yf,Yt] = makeYbus(baseMVA,bus,branch);
 
+idxCurtail = find(gen2(:,PTYPE)==PCUR);
+nCurtail = length(idxCurtail);
 %% PRINT GENERATION
 
 % collect injections in matrix:
@@ -44,6 +46,8 @@ VmU = zeros(size(Vm));
 VmL = zeros(size(Vm));
 VaU = zeros(size(Vm));
 VaL = zeros(size(Vm));
+
+Beta = zeros(nCurtail,nc);
 
 Sflow = nan(nl,2*nc);
 
@@ -77,7 +81,9 @@ for i=1:nc
         iPg = [];
     end
     iQg = vv.i1.(['Qg' si]):vv.iN.(['Qg' si]);
-    
+    if i > 1
+        iBeta = vv.i1.(['Beta' si]):vv.iN.(['Beta' si]);
+    end
     % voltages
     Vm(:,i) = x(iVm);
     Va(:,i) = x(iVa);
@@ -91,6 +97,8 @@ for i=1:nc
     
     %idxPfix = mpc.gen2(:,PTYPE) == PFIX;
     idxPvar = and(mpc.gen2(:,PTYPE) == PVAR,~idxTrip);
+    idxPfix = mpc.gen2(:,PTYPE) == PFIX;
+    idxPcur = mpc.gen2(:,PTYPE) == PCUR;
     idxQvar = ~idxTrip;
     
     
@@ -102,7 +110,8 @@ for i=1:nc
     
     if i > 1
         Pg(idxPvar,i) = x(iPg);
-        Pg(~idxPvar,i) = Pg(~idxPvar,1); % store fixed values in all contingencies
+        Pg(idxPfix,i) = Pg(idxPfix,1); % store fixed values in all contingencies
+        Pg(idxPcur,i) = cs.wind(1+(i-1)*nCurtail:i*nCurtail)/baseMVA.*(1-x(iBeta)); % store wind scenarios
         Pg(idxTrip,i) = NaN;
         PgL(idxPvar,i) = Lambda.lower(iPg);
         PgU(idxPvar,i) = Lambda.upper(iPg);
@@ -111,6 +120,7 @@ for i=1:nc
         Qg(idxTrip,i) = NaN;
         QgL(idxQvar,i) = Lambda.lower(iQg);
         QgU(idxQvar,i) = Lambda.upper(iQg);
+        Beta(:,i) = x(iBeta);
     else % base case
         if includePgBase
             Pg(:,i) = x(iPg);
@@ -119,7 +129,7 @@ for i=1:nc
         else
             Pg(:,i) = mpc.gen(:,PG)/mpc.baseMVA; % get pre-set Pg values
         end
-        
+        Beta(:,i) = 0;
         Qg(:,i) = x(iQg);
         QgL(:,i) = Lambda.lower(iQg);
         QgU(:,i) = Lambda.upper(iQg);
@@ -181,6 +191,7 @@ PgL = [busExt PgL];
 QgU = [busExt QgU];
 QgL = [busExt QgL];
 
+Beta = [mpc.order.bus.i2e(mpc.gen(idxCurtail,GEN_BUS)) Beta];
 
 s = mpc.order.gen.e2i;
 % sort according to external indexing
@@ -217,7 +228,7 @@ VaU(VaU < thrs) = 0;
 VaL(VaL < thrs) = 0;
 
 %% make tables
-
+varnames_beta = {'BUS'}
 varnames_pg = {'BUS'};
 varnames_qg = {'BUS'};
 varnames_va = {'BUS'};
@@ -236,6 +247,7 @@ for i=1:nc
     varnames_vm{i+1} = ['VM' stringIdx];
     varnames_S{2*i+3} = ['SF' stringIdx];
     varnames_S{2*i+4} = ['ST' stringIdx];
+    varnames_beta{i+1} = ['BETA' stringIdx];
 end
 
 Pg_table = array2table(Pg,...
@@ -254,13 +266,15 @@ Vm_lamL_table = array2table(VmL,'VariableNames',varnames_vm);
 Va_lamU_table = array2table(VaU,'VariableNames',varnames_va);
 Va_lamL_table = array2table(VaL,'VariableNames',varnames_va);
 
+Beta_table = array2table(Beta,'VariableNames',varnames_beta);
+
 S_table = array2table(Sflow,'VariableNames',varnames_S);
 S_lam_table = array2table(Sflow_lam,'VariableNames',varnames_S);
 
 tab = struct();
 [tab.Pg,tab.Qg,tab.Va,tab.Vm, tab.S, tab.Slam] = deal(Pg_table,Qg_table,Va_table,Vm_table, S_table, S_lam_table);
-[tab.PgUlam,tab.PgLlam,tab.QgUlam,tab.QgLlam,tab.VmUlam,tab.VmLlam,tab.VaUlam,tab.VaLlam] = ...
-    deal(Pg_lamU_table,Pg_lamL_table,Qg_lamU_table,Qg_lamL_table,Vm_lamU_table,Vm_lamL_table,Va_lamU_table,Va_lamL_table);
+[tab.PgUlam,tab.PgLlam,tab.QgUlam,tab.QgLlam,tab.VmUlam,tab.VmLlam,tab.VaUlam,tab.VaLlam, tab.Beta] = ...
+    deal(Pg_lamU_table,Pg_lamL_table,Qg_lamU_table,Qg_lamL_table,Vm_lamU_table,Vm_lamL_table,Va_lamU_table,Va_lamL_table, Beta_table);
 %display(Pg_table);
 
 %[Vm mpc.bus(:,VMIN) mpc.bus(:,VMAX) Lambda.upper(vv.i1.Vm:vv.iN.Vm)]

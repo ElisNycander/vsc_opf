@@ -21,6 +21,9 @@ nc   = cs.N; %% number of contingencies
 % nCur = sum(mpc.gen2(:,PTYPE)==PCUR);
 
 idxPVar = mpc.gen2(:,PTYPE)==PVAR;
+% curtailable generators
+idxCurtail = find(mpc.gen2(:,PTYPE)==PCUR);
+nCurtail = length(idxCurtail);
 
 idxQVar = ones(ng,1);
 
@@ -98,9 +101,7 @@ om = opf_model(mpc);
       else
           
           stringIdx = num2str(i);
-          
-          % add curtailment fractions
-          % NOT IMPLEMENTED
+         
           
           om = add_vars(om, ['Va' stringIdx], nb, ...
               repmat(Vac,1,1), ...
@@ -130,6 +131,12 @@ om = opf_model(mpc);
           % add P and Q for variable generators
           om = add_vars(om, ['Pg' stringIdx], nPvar, iPg, iPmin, iPmax);
           om = add_vars(om, ['Qg' stringIdx], nQvar, iQg, iQmin, iQmax);
+          
+          % add curtailment fractions
+          % NOT IMPLEMENTED
+          zv = zeros(nCurtail,1);
+          ov = ones(nCurtail,1);
+          om = add_vars(om, ['Beta' stringIdx],nCurtail,zv,zv,ov);
           
           %%- DONT ADD CONSTRAINTS AS THESE ARE NOT USED
           % power balance
