@@ -40,9 +40,9 @@ for i=1:N
     % deactivate generators
     gen = gen(cs.activeGenerators(:,i),:);
 	
-	Pg = table2array(results.Pg(:,i+1));
+	Pg = table2array(results.Pg(:,i+2));
 	Pg = Pg(~isnan(Pg));
-	Qg = table2array(results.Qg(:,i+1));
+	Qg = table2array(results.Qg(:,i+2));
 	Qg = Qg(~isnan(Pg));
 	gen(:,[PG QG]) = [Pg Qg];
 	

@@ -8,6 +8,7 @@ define_constants;
 mpc = get_mpc(om);
 vv = get_idx(om);
 wind = mpc.contingencies.wind/mpc.baseMVA; % wind scenarios
+prob = mpc.contingencies.probabilities;
 nCurtail = length(find(mpc.gen2(mpc.gen2(:,PTYPE) == PCUR)));
 %% problem dimensions
 nxyz = length(x);           %% total number of control vars of all types
@@ -18,7 +19,11 @@ for i=2:mpc.contingencies.N % note: no curtailment for base case
    sidx = num2str(i); 
    idx(vv.i1.(['Beta' sidx]):vv.iN.(['Beta' sidx])) = true; 
 end
-f = sum( x(idx) .* wind(nCurtail+1:end) );
+prob = zeros(nCurtail*(mpc.contingencies.N-1),1);
+for i=1:mpc.contingencies.N-1
+    prob(1+(i-1)*nCurtail:i*nCurtail) = mpc.contingencies.probabilities(i+1);
+end
+f = sum( x(idx) .* wind(nCurtail+1:end) .* prob );
 
 
 
@@ -53,7 +58,7 @@ if nargout > 1
   %% gradient
 
     df = zeros(nxyz,1);
-    df(idx) = wind(nCurtail+1:end);
+    df(idx) = wind(nCurtail+1:end) .* prob;
     
   %%  Hessian 
   if nargout > 2

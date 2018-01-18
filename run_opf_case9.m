@@ -21,9 +21,9 @@ optns.lamdaTolerance = 1e-8; % round smaller lambda to 0 for tables
 % extra generators           
 %	bus	Pg	Qg	Qmax	Qmin	Vg	mBase	status	Pmax	Pmin	           
 optns.gen.extra = [
-    4   10 0   0       0       1   100     1       1e3     0
-    6   10 0   0       0       1   100     1       1e3     0
-    8   10 0   0       0       1   100     1       1e3     0
+    4   50 0   0       0       1   100     1       1e3     0
+    6   50 0   0       0       1   100     1       1e3     0
+    8   50 0   0       0       1   100     1       1e3     0
 ];
 
 %% the active power of generators can either be:
@@ -31,8 +31,8 @@ optns.gen.extra = [
 % 2 Fixed - set by base case power flow
 % 3 Curtailable - can be curtailed relative to base case in contingencies
 % Note: Variable is default
-optns.gen.fixedP = [4 5];
-optns.gen.curtailableP = [6];
+optns.gen.fixedP = [];
+optns.gen.curtailableP = [4 5 6];
 optns.gen.variableP = [1 2 3];
 % include non-variable p in optimization or not, may take given values as "market outcome"
 optns.gen.optimizeBaseP = 0; 
@@ -44,9 +44,17 @@ optns.gen.maxPgLim = [3000];
 % curtailable generators, or just one row, in which case the same scenario
 % is applied to all curtailable generators
 optns.gen.windScenarios = [
-    20 400
+    70 100 130 150
 ];
+% probabilities for wind scenarios, empty means all scenarios equally
+% likely
+optns.gen.windProbabilities = [
+];
+% activate/deactivate given wind power scenarios, if active the scenarios
+% will be constructed as [wind scenarios x contingencies]
+optns.gen.useWindScenarios = 1;
 
+%% branch options
 optns.branch.limit = 1; % turn on/off branch limits 
 optns.branch.rateA = [ % branch limits, 0 means line is unconstrained
     250*ones(4,1)
@@ -56,6 +64,7 @@ optns.branch.rateA = [ % branch limits, 0 means line is unconstrained
 
 optns.branch.duplicate = []; % duplicate these branches
 
+%% load increase
 %optns.load.loadIncreaseArea = 1; % areas where to increase load
 optns.bus.loadIncrease = [5 7 9]; % buses with load increase for contingencies
 
@@ -83,7 +92,9 @@ mpc = setup_mpc(optns);
 
 
 %% RUN INITIAL POWER FLOW FOR BASE CASE
-
+% do pfs quietly
+optns.mpopt.out.all = 0;
+optns.mpopt.verbose = 0;
 mpci = runpf(mpc,optns.mpopt);
 assert(mpci.success == 1,'Initial power flow was unsuccessful');
 % copy base case values, for initial guess
@@ -129,14 +140,14 @@ t0 = clock();
   fmincon(f_fcn, x0, [], [], [], [], LB, UB, g_fcn, foptions);
 et = etime(clock,t0);
 fprintf(['Time: %0.3f s'],et)
-fprintf(['\nObjective function: %0.1f'],-f*mpc.baseMVA);
+fprintf(['\nObjective function: %0.1f'],f*mpc.baseMVA);
 %[x0 x Lambda.lower Lambda.upper LB UB]
 
-[results,tab] = get_opf_results(om,x,Lambda,optns);
+[results,table] = get_opf_results(om,x,Lambda,optns);
 [results.et, results.f, results.success] = deal(et,f,success);
 
 if optns.verify == 1
-    success = verify_solutions(tab,om,optns);
+    success = verify_solutions(table,om,optns);
     fprintf(['\nSolutions verified: %i'],success);
 end
 %fd = fopen('output.txt','at');
@@ -145,12 +156,17 @@ end
 % vv = get_idx(om);
 % tab.Qg
 % 180/pi*x(vv.i1.Va1:vv.iN.Va1)
-tab.Vm
-tab.Pg
-tab.Qg
-tab.S
-tab.Slam
+% table.Vm
+% table.Pg
+% table.Beta
+% table.Curtail
+% table.ExpCurtail
+% table.Qg
+% table.S
+% table.Slam
 
 [h,g] = g_fcn(x);
 g_dev = sum(abs(g))
 h_dev = min(abs(h))
+
+plot_results(table,optns);

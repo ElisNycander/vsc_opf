@@ -48,6 +48,8 @@ VaU = zeros(size(Vm));
 VaL = zeros(size(Vm));
 
 Beta = zeros(nCurtail,nc);
+Curtail = zeros(nCurtail,nc);
+Wind = zeros(nCurtail,nc);
 
 Sflow = nan(nl,2*nc);
 
@@ -121,6 +123,8 @@ for i=1:nc
         QgL(idxQvar,i) = Lambda.lower(iQg);
         QgU(idxQvar,i) = Lambda.upper(iQg);
         Beta(:,i) = x(iBeta);
+        Curtail(:,i) = cs.wind(1+(i-1)*nCurtail:i*nCurtail).*x(iBeta);
+        
     else % base case
         if includePgBase
             Pg(:,i) = x(iPg);
@@ -130,11 +134,13 @@ for i=1:nc
             Pg(:,i) = mpc.gen(:,PG)/mpc.baseMVA; % get pre-set Pg values
         end
         Beta(:,i) = 0;
+        Curtail(:,i) = 0;
         Qg(:,i) = x(iQg);
         QgL(:,i) = Lambda.lower(iQg);
         QgU(:,i) = Lambda.upper(iQg);
     end
-        
+    
+    Wind(:,i) = cs.wind(1+(i-1)*nCurtail:i*nCurtail); 
     % voltage limits
     VmU(:,i) = Lambda.upper(iVm);
     VmL(:,i) = Lambda.lower(iVm);
@@ -183,15 +189,26 @@ for i=1:nc
 end
 
 % put gen bus in matrix, convert to nominal units
-Pg = [mpc.order.bus.i2e(mpc.gen(:,GEN_BUS)) Pg*mpc.baseMVA];
-Qg = [mpc.order.bus.i2e(mpc.gen(:,GEN_BUS)) Qg*mpc.baseMVA];
+Pg = [mpc.order.bus.i2e(1:ng) mpc.order.bus.i2e(mpc.gen(:,GEN_BUS)) Pg*mpc.baseMVA];
+Qg = [mpc.order.bus.i2e(1:ng) mpc.order.bus.i2e(mpc.gen(:,GEN_BUS)) Qg*mpc.baseMVA];
+genExt = mpc.order.bus.i2e(1:ng);
 busExt = mpc.order.bus.i2e(mpc.gen(:,GEN_BUS));
-PgU = [busExt PgU];
-PgL = [busExt PgL];
-QgU = [busExt QgU];
-QgL = [busExt QgL];
+PgU = [genExt busExt PgU];
+PgL = [genExt busExt PgL];
+QgU = [genExt busExt QgU];
+QgL = [genExt busExt QgL];
 
-Beta = [mpc.order.bus.i2e(mpc.gen(idxCurtail,GEN_BUS)) Beta];
+Beta = [mpc.order.bus.i2e(idxCurtail) mpc.order.bus.i2e(mpc.gen(idxCurtail,GEN_BUS)) Beta];
+expCurtail = [cs.probabilities(1:end)'; sum(Curtail,1); ...
+              cs.probabilities(1:end)'.*sum(Curtail,1)];
+Curtail = [mpc.order.gen.i2e(idxCurtail) mpc.order.bus.i2e(mpc.gen(idxCurtail,GEN_BUS)) Curtail];
+Wind = [mpc.order.gen.i2e(idxCurtail) mpc.order.bus.i2e(mpc.gen(idxCurtail,GEN_BUS)) Wind];
+% add row with sum of curtailment
+% Curtail = [Curtail; sum(Curtail,1)]; 
+% Curtail(end,1:2) = NaN;
+% table with sum of curtailment and probabilities
+%expCurtail = sum(Curtail(:,3:end),1)
+
 
 s = mpc.order.gen.e2i;
 % sort according to external indexing
@@ -228,12 +245,15 @@ VaU(VaU < thrs) = 0;
 VaL(VaL < thrs) = 0;
 
 %% make tables
-varnames_beta = {'BUS'}
-varnames_pg = {'BUS'};
-varnames_qg = {'BUS'};
+varnames_beta = {'GEN', 'BUS'};
+varnames_curtail = {'GEN','BUS'};
+varnames_pg = {'GEN', 'BUS'};
+varnames_qg = {'GEN', 'BUS'};
 varnames_va = {'BUS'};
 varnames_vm = {'BUS'};
 varnames_S = {'BRANCH','FROM','TO','RATE_A'};
+varnames_expcurtail = {};
+varnames_wind = {'GEN','BUS'};
 for i=1:nc
 	if i == 1
 		stringIdx = '';
@@ -241,13 +261,17 @@ for i=1:nc
 		stringIdx = num2str(i);
 	end
 	
-    varnames_pg{i+1} = ['PG' stringIdx];
-    varnames_qg{i+1} = ['QG' stringIdx];
+    varnames_pg{i+2} = ['PG' stringIdx];
+    varnames_qg{i+2} = ['QG' stringIdx];
     varnames_va{i+1} = ['VA' stringIdx];
     varnames_vm{i+1} = ['VM' stringIdx];
     varnames_S{2*i+3} = ['SF' stringIdx];
     varnames_S{2*i+4} = ['ST' stringIdx];
-    varnames_beta{i+1} = ['BETA' stringIdx];
+    varnames_beta{i+2} = ['BETA' stringIdx];
+    varnames_curtail{i+2} = ['PGC' stringIdx];
+    varnames_wind{i+2} = ['PWIND' stringIdx];
+    varnames_expcurtail{i} = ['EPGC' stringIdx];
+    
 end
 
 Pg_table = array2table(Pg,...
@@ -267,181 +291,20 @@ Va_lamU_table = array2table(VaU,'VariableNames',varnames_va);
 Va_lamL_table = array2table(VaL,'VariableNames',varnames_va);
 
 Beta_table = array2table(Beta,'VariableNames',varnames_beta);
-
+Curtail_table = array2table(Curtail,'VariableNames',varnames_curtail);
+expCurtail_table = array2table(expCurtail,'VariableNames',varnames_expcurtail);
+Wind_table = array2table(Wind,'VariableNames',varnames_wind);
 S_table = array2table(Sflow,'VariableNames',varnames_S);
 S_lam_table = array2table(Sflow_lam,'VariableNames',varnames_S);
 
 tab = struct();
-[tab.Pg,tab.Qg,tab.Va,tab.Vm, tab.S, tab.Slam] = deal(Pg_table,Qg_table,Va_table,Vm_table, S_table, S_lam_table);
+[tab.Pg,tab.Qg,tab.Va,tab.Vm, tab.S, tab.Slam, tab.Curtail] = deal(Pg_table,Qg_table,Va_table,Vm_table, S_table, S_lam_table, Curtail_table);
 [tab.PgUlam,tab.PgLlam,tab.QgUlam,tab.QgLlam,tab.VmUlam,tab.VmLlam,tab.VaUlam,tab.VaLlam, tab.Beta] = ...
     deal(Pg_lamU_table,Pg_lamL_table,Qg_lamU_table,Qg_lamL_table,Vm_lamU_table,Vm_lamL_table,Va_lamU_table,Va_lamL_table, Beta_table);
-%display(Pg_table);
+[tab.ExpCurtail, tab.Wind] = deal(expCurtail_table, Wind_table);
 
-%[Vm mpc.bus(:,VMIN) mpc.bus(:,VMAX) Lambda.upper(vv.i1.Vm:vv.iN.Vm)]
-%runopf(mpc);
-
-%% STORE BASE RESULTS IN MPC STRUCT
-
-% V = Vm(:,2) .* exp(1j * pi/180*Va(:,2));
-% 
-% % store base case voltages
-% bus(:,VM) = Vm(:,2);
-% bus(:,VA) = Va(:,2);
-% % store base case generation
-% gen(:,PG) = Pg(:,2);
-% gen(:,QG) = Qg(:,2);
-% 
-% % copy bus voltages back to gen matrix
-% gen(:, VG) = bus(gen(:, GEN_BUS), VM);
-% 
-% %% compute branch flows
-% Sf = V(branch(:, F_BUS)) .* conj(Yf * V);  %% cplx pwr at "from" bus, p.u.
-% Sflow = V(branch(:, T_BUS)) .* conj(Yt * V);  %% cplx pwr at "to" bus, p.u.
-% branch(:, PF) = real(Sf) * baseMVA;
-% branch(:, QF) = imag(Sf) * baseMVA;
-% branch(:, PT) = real(Sflow) * baseMVA;
-% branch(:, QT) = imag(Sflow) * baseMVA;
-
-%% multipliers for branch flows
-% muSf = zeros(nl, 1);
-% muSt = zeros(nl, 1);
-
-%% update Lagrange multipliers
-% bus(:, MU_VMAX)  = Lambda.upper(vv.i1.Vm:vv.iN.Vm);
-% bus(:, MU_VMIN)  = Lambda.lower(vv.i1.Vm:vv.iN.Vm);
-% gen(:, MU_PMAX)  = Lambda.upper(vv.i1.Pg:vv.iN.Pg) / baseMVA;
-% gen(:, MU_PMIN)  = Lambda.lower(vv.i1.Pg:vv.iN.Pg) / baseMVA;
-% gen(:, MU_QMAX)  = Lambda.upper(vv.i1.Qg:vv.iN.Qg) / baseMVA;
-% gen(:, MU_QMIN)  = Lambda.lower(vv.i1.Qg:vv.iN.Qg) / baseMVA;
-% bus(:, LAM_P)    = Lambda.eqnonlin(nn.i1.Pmis:nn.iN.Pmis) / baseMVA;
-% bus(:, LAM_Q)    = Lambda.eqnonlin(nn.i1.Qmis:nn.iN.Qmis) / baseMVA;
-% branch(:, MU_SF) = muSf / baseMVA;
-% branch(:, MU_ST) = muSt / baseMVA;
 
 results = mpc;
 [results.bus, results.branch, results.gen, results.gen2, results.bus2, ...
     results.om] = ...
         deal(bus, branch, gen, gen2, bus2, om);
-% [results.bus, results.branch, results.gen, ...
-%     results.om, results.x, results.mu, results.f] = ...
-%         deal(bus, branch, gen, om, x, mu, f);
-%branch(:, MU_SF) = muSf / baseMVA;
-%branch(:, MU_ST) = muSt / baseMVA;
-
-% %% package up results
-% nlnN = getN(om, 'nln');
-% nlt = length(ilt);
-% ngt = length(igt);
-% nbx = length(ibx);
-% 
-% %% extract multipliers for nonlinear constraints
-% kl = find(Lambda.eqnonlin < 0);
-% ku = find(Lambda.eqnonlin > 0);
-% nl_mu_l = zeros(nlnN, 1);
-% nl_mu_u = [zeros(2*nb, 1); muSf; muSt];
-% nl_mu_l(kl) = -Lambda.eqnonlin(kl);
-% nl_mu_u(ku) =  Lambda.eqnonlin(ku);
-% 
-% %% extract multipliers for linear constraints
-% kl = find(Lambda.eqlin < 0);
-% ku = find(Lambda.eqlin > 0);
-% 
-% mu_l = zeros(size(u));
-% mu_l(ieq(kl)) = -Lambda.eqlin(kl);
-% mu_l(igt) = Lambda.ineqlin(nlt+(1:ngt));
-% mu_l(ibx) = Lambda.ineqlin(nlt+ngt+nbx+(1:nbx));
-% 
-% mu_u = zeros(size(u));
-% mu_u(ieq(ku)) = Lambda.eqlin(ku);
-% mu_u(ilt) = Lambda.ineqlin(1:nlt);
-% mu_u(ibx) = Lambda.ineqlin(nlt+ngt+(1:nbx));
-% 
-% mu = struct( ...
-%   'var', struct('l', Lambda.lower, 'u', Lambda.upper), ...
-%   'nln', struct('l', nl_mu_l, 'u', nl_mu_u), ...
-%   'lin', struct('l', mu_l, 'u', mu_u) );
-% 
-% results = mpc;
-% [results.bus, results.branch, results.gen, ...
-%     results.om, results.x, results.mu, results.f] = ...
-%         deal(bus, branch, gen, om, x, mu, f);
-% 
-% pimul = [ ...
-%   results.mu.nln.l - results.mu.nln.u;
-%   results.mu.lin.l - results.mu.lin.u;
-%   -ones(ny>0, 1);
-%   results.mu.var.l - results.mu.var.u;
-% ];
-% raw = struct('xr', x, 'pimul', pimul, 'info', info, 'output', Output);
-% 
-% %end
-% %% angle limit constraint multipliers
-% if ~sdp && ll.N.ang > 0
-%     iang = userdata(om, 'iang');
-%     mpc.branch(iang, MU_ANGMIN) = mpc.mu.lin.l(ll.i1.ang:ll.iN.ang) * pi/180;
-%     mpc.branch(iang, MU_ANGMAX) = mpc.mu.lin.u(ll.i1.ang:ll.iN.ang) * pi/180;
-% end
-%     if ~sdp
-%         %% assign values and limit shadow prices for variables
-%         om_var_order = get(om, 'var', 'order');
-%         for k = 1:length(om_var_order)
-%             name = om_var_order(k).name;
-%             if getN(om, 'var', name)
-%                 idx = vv.i1.(name):vv.iN.(name);
-%                 mpc.var.val.(name) = mpc.x(idx);
-%                 mpc.var.mu.l.(name) = mpc.mu.var.l(idx);
-%                 mpc.var.mu.u.(name) = mpc.mu.var.u(idx);
-%             end
-%         end
-%         
-%         %% assign shadow prices for linear constraints
-%         om_lin_order = get(om, 'lin', 'order');
-%         for k = 1:length(om_lin_order)
-%             name = om_lin_order(k).name;
-%             if getN(om, 'lin', name)
-%                 idx = ll.i1.(name):ll.iN.(name);
-%                 mpc.lin.mu.l.(name) = mpc.mu.lin.l(idx);
-%                 mpc.lin.mu.u.(name) = mpc.mu.lin.u(idx);
-%             end
-%         end
-%         
-%         %% assign shadow prices for nonlinear constraints
-%         if ~dc
-%             om_nln_order = get(om, 'nln', 'order');
-%             for k = 1:length(om_nln_order)
-%                 name = om_nln_order(k).name;
-%                 if getN(om, 'nln', name)
-%                     idx = nn.i1.(name):nn.iN.(name);
-%                     mpc.nln.mu.l.(name) = mpc.mu.nln.l(idx);
-%                     mpc.nln.mu.u.(name) = mpc.mu.nln.u(idx);
-%                 end
-%             end
-%         end
-%         
-%         %% assign values for components of user cost
-%         om_cost_order = get(om, 'cost', 'order');
-%         for k = 1:length(om_cost_order)
-%             name = om_cost_order(k).name;
-%             if getN(om, 'cost', name)
-%                 mpc.cost.(name) = compute_cost(om, mpc.x, name);
-%             end
-%         end
-%         
-%         %% if single-block PWL costs were converted to POLY, insert dummy y into x
-%         %% Note: The "y" portion of x will be nonsense, but everything should at
-%         %%       least be in the expected locations.
-%         pwl1 = userdata(om, 'pwl1');
-%         if ~isempty(pwl1) && ~strcmp(alg, 'TRALM') && ~(strcmp(alg, 'PDIPM') && mpopt.pdipm.step_control)
-%             %% get indexing
-%             vv = get_idx(om);
-%             if dc
-%                 nx = vv.iN.Pg;
-%             else
-%                 nx = vv.iN.Qg;
-%             end
-%             y = zeros(length(pwl1), 1);
-%             raw.xr = [ raw.xr(1:nx); y; raw.xr(nx+1:end)];
-%             mpc.x = [ mpc.x(1:nx); y; mpc.x(nx+1:end)];
-%         end
-%         
-%     end

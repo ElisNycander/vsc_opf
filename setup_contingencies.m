@@ -3,16 +3,46 @@ function mpc = setup_contingencies(mpc,optns)
 define_constants;
 
 list = eval(optns.contingencyFile);
-list = [zeros(1,size(list,2));list]; % filler row for base case
+
 if isempty(list) % minimal list if there are no contigencies
     list = zeros(1,4);  
 end
 N = size(list,1);
-
-% add column with wind scenarios
-if size(list,2) < CONT_WIND_SCENARIO
-    list = [list zeros(size(list,1),1)];
+nContingencies = N;
+% add column with equal probabilities for all contingencies (except base
+% case)
+if size(list,2) < CONT_PROB
+    list = [list 1/N*ones(N,1)];
 end
+
+% [contingencies x wind scenarios]
+nScenarios = length(optns.gen.windScenarios);
+if isempty(optns.gen.windProbabilities)
+    optns.gen.windProbabilities = 1/nScenarios*ones(1,nScenarios);
+end
+if optns.gen.useWindScenarios
+   list = repmat(list,nScenarios,1);
+
+   % add column with wind scenarios
+   if size(list,2) < CONT_WIND_SCENARIO
+       list = [list zeros(size(list,1),1)];
+   end
+   for i=1:nScenarios
+        list(1+(i-1)*N:i*N,CONT_WIND_SCENARIO) = i;
+   end
+   % update probabilities
+   for i=1:size(list,1)
+        list(i,CONT_PROB) = list(i,CONT_PROB) * ...
+                optns.gen.windProbabilities(list(i,CONT_WIND_SCENARIO));
+   end
+   assert(abs(sum(list(:,CONT_PROB))-1)<1e-10,'Probabilities not equal to 1');
+end
+
+list = [zeros(1,size(list,2));list]; % filler row for base case
+
+% update number of contingencies
+N = size(list,1);
+
 
 nb = size(mpc.bus,1);
 nl = size(mpc.branch,1);
@@ -43,6 +73,7 @@ Yf = sparse(N*nl,nb);
 Yt = sparse(N*nl,nb);
 load = sparse(N*busVarN,2); % container for load [PD QD]
 wind = zeros(N*nCurtail,1); % container for wind scenarios
+prob = zeros(N,1); % probabilities of scenarios
 activeLines = true(nl,N);
 constrainedActiveLines = false(nl,N);
 activeGenerators = true(ng,N);
@@ -124,5 +155,6 @@ nActiveGenerators = sum(activeGenerators,1);
 c = struct(); % create struct
 [c.list, c.N, c.Ybus, c.Yf, c.Yt, c.load, c.activeLines, c.nActiveLines, c.activeGenerators, c.nActiveGenerators, c.constrainedActiveLines, c.nConstrainedActiveLines, c.wind]...
 	= deal(list,N,Ybus,Yf,Yt,load, activeLines, nActiveLines, activeGenerators, nActiveGenerators, constrainedActiveLines, nConstrainedActiveLines,wind); % assign elements to struct
+[c.probabilities, c.nScenarios, c.nContingencies] = deal(list(:,CONT_PROB), nScenarios, nContingencies);
 mpc.contingencies = c; % save struct in mpc
 end
