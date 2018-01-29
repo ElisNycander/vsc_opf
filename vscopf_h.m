@@ -32,7 +32,6 @@ function Lxx = vscopf_h(x, lambda, om, mpopt)
 %%----- initialize -----
 define_constants;
 
-
 %% unpack data
 lim_type = upper(mpopt.opf.flow_lim(1));
 mpc = get_mpc(om);
@@ -47,6 +46,13 @@ nb = size(bus, 1);          %% number of buses
 %ng = size(gen, 1);          %% number of dispatchable injections
 nxyz = length(x);           %% total number of control vars of all types
 nc = cs.N; % includes contingencies
+
+
+if isfield(vv.i1,'Vsp')
+    useVoltageControl = 1;
+else
+    useVoltageControl = 0;
+end
 
 %% find constrained lines - preparation for hessian of branch flow constriants
 %idxConstrainedLines = branch(:,RATE_A) ~= 0; %% logical index for constrained lines
@@ -64,10 +70,11 @@ busVarN = length(varload_idx);
 %idxPvar = gen2(:,PFIX) == 0;
 %idxQvar = gen2(:,QFIX) == 0;
 
+% get indices
 nlam = length(lambda.eqnonlin) / 2 / nc;
 
 d2G = zeros(nxyz);
-d2H = zeros(size(d2G));
+d2H = zeros(nxyz);
 
 counter = 0; % counter for entries in d2G, d2H
 ycounter = 0; % counter for rows in Yf, Yt
@@ -78,6 +85,17 @@ for i=1:nc %% loop over all cases
         sidx = '';
     else % contingency
         sidx = num2str(i);
+    end
+    
+    iPmis = nn.i1.(['Pmis' sidx]):nn.iN.(['Pmis' sidx]);
+    iQmis = nn.i1.(['Qmis' sidx]):nn.iN.(['Qmis' sidx]);
+    if useVoltageControl
+       iCp = nn.i1.(['Cp' sidx]):nn.iN.(['Cp' sidx]);
+       iCn = nn.i1.(['Cn' sidx]):nn.iN.(['Cn' sidx]);
+    %   iVbal = nn.i1.(['Vbal' sidx]):nn.iN.(['Vbal' sidx]);
+       iQg = vv.i1.(['Qg' sidx]):vv.iN.(['Qg' sidx]);
+       iVp = vv.i1.(['Vp' sidx]):vv.iN.(['Vp' sidx]);
+       iVn = vv.i1.(['Vn' sidx]):vv.iN.(['Vn' sidx]);
     end
     
     iVa = vv.i1.(['Va' sidx]):vv.iN.(['Va' sidx]);
@@ -122,9 +140,11 @@ for i=1:nc %% loop over all cases
     %% ----- evaluate Hessian of power balance constraints -----
     % select lambdas for this set of power balance constraints
     
-    lamP = lambda.eqnonlin(1+(i-1)*nlam:i*nlam);
-    lamQ = lambda.eqnonlin(1+i*nlam:(i+1)*nlam);
-  
+    %lamP = lambda.eqnonlin(1+(i-1)*nlam:i*nlam);
+    %lamQ = lambda.eqnonlin(1+i*nlam:(i+1)*nlam);
+    lamP = lambda.eqnonlin(iPmis);
+    lamQ = lambda.eqnonlin(iQmis);
+    
     [Gpaa, Gpav, Gpva, Gpvv] = d2Sbus_dV2(iYbus, V, lamP);
     [Gqaa, Gqav, Gqva, Gqvv] = d2Sbus_dV2(iYbus, V, lamQ);
     %% constant impedance part of ZIP loads
@@ -136,13 +156,28 @@ for i=1:nc %% loop over all cases
         real([Gpaa Gpav; Gpva Gpvv]) + imag([Gqaa Gqav; Gqva Gqvv]) sparse(2*nb, nxtra);
         sparse(nxtra, 2*nb + nxtra)
         ];
+    nZerosG = nnz(d2G);
+    if useVoltageControl
+       % Educated guess: put Lagrange multipliers for Cp and Cn on places for
+       % (Vp, Vn) and Q in d2G
+       d2G(sub2ind(size(d2G),iQg,iVp)) = lambda.eqnonlin(iCp);
+       d2G(sub2ind(size(d2G),iVp,iQg)) = lambda.eqnonlin(iCp);
+       d2G(sub2ind(size(d2G),iQg,iVn)) = lambda.eqnonlin(iCn);
+       d2G(sub2ind(size(d2G),iVn,iQg)) = lambda.eqnonlin(iCn);
+        
+       %assert(nnz(d2G))
+    end
+    
     %% evaluate Hessian of branch flow constraints 
     if nConstrainedLines
             muF = lambda.ineqnonlin(hcounter+1:hcounter+nBranch);
             muT = lambda.ineqnonlin(1+hcounter+nBranch:hcounter+2*nBranch);
             %muF = lambda.ineqnonlin(1+(i-1)*nmu:i*nmu);
             %muT = lambda.ineqnonlin(1+i*nmu:(i+1)*nmu);
-       
+           % NOTE: BETTER TO USE INDICES FROM nn
+            %iSf = nn.i1.(['Sf' sidx]):nn.iN.(['Sf' sidx]);
+            %iSt = nn.i1.(['St' sidx]):nn.iN.(['St' sidx]);
+            
             % keep all branches until last assignemtn
         if lim_type == 'I'          %% square of current
             [dIf_dVa, dIf_dVm, dIt_dVa, dIt_dVm, If, It] = dIbr_dV(branch(idxBranch,:), iiYf, iiYt, V);

@@ -46,6 +46,19 @@ VaU = zeros(size(Vm));
 VaL = zeros(size(Vm));
 
 Sflow = nan(nl,2*nc);
+Pflow = nan(nl,3*nc);
+Qflow = nan(nl,3*nc);
+
+if isfield(vv.i1,'Vsp')
+    useVoltageControl = 1;
+else
+    useVoltageControl = 0;
+end
+if useVoltageControl
+    Vsp = x(vv.i1.Vsp:vv.iN.Vsp);
+    Vp = zeros(ng,nc);
+    Vn = zeros(ng,nc);
+end
 
 ycounter = 0;
 for i=1:nc
@@ -65,6 +78,7 @@ for i=1:nc
     Va(:,i) = x(iVa);
     V = x(iVm) .* exp(1j * x(iVa));
     
+    
     % generation
     idxPfix = mpc.gen2(:,PFIX) == 1;
     idxQfix = mpc.gen2(:,QFIX) == 1;
@@ -73,9 +87,16 @@ for i=1:nc
     
     idxPvar = and(~idxTrip,~idxPfix);
     idxQvar = and(~idxTrip,~idxQfix);
-    idxActiveGenerators = cs.activeGenerators(:,i);
-    idxTrippedGenerators = ~cs.activeGenerators(:,i);
-    nActiveGenerators = cs.nActiveGenerators(i);
+    %idxActiveGenerators = cs.activeGenerators(:,i);
+    %idxTrippedGenerators = ~cs.activeGenerators(:,i);
+    %nActiveGenerators = cs.nActiveGenerators(i);
+    
+    if useVoltageControl
+        Vp(cs.activeGenerators(:,i),i) = x(vv.i1.(['Vp' si]):vv.iN.(['Vp' si]));
+        Vp(idxTrip,i) = NaN;
+        Vn(cs.activeGenerators(:,i),i) = x(vv.i1.(['Vn' si]):vv.iN.(['Vn' si]));
+        Vn(idxTrip,i) = NaN;
+    end
     
     if i > 1
         Pg(idxPvar,i) = x(iPg);
@@ -132,11 +153,22 @@ for i=1:nc
         end
         
     end    
+    Pflow(active_lines,3*i-2) = real(iSf)*baseMVA;
+    Pflow(active_lines,3*i-1) = real(iSt)*baseMVA;
+    Pflow(active_lines,3*i) = (real(iSf)+real(iSt))*baseMVA;
+    Qflow(active_lines,3*i-2) = imag(iSf)*baseMVA;
+    Qflow(active_lines,3*i-1) = imag(iSt)*baseMVA;
+    Qflow(active_lines,3*i) = (imag(iSf)+imag(iSt))*baseMVA;
 end
 
 % put gen bus in matrix, convert to nominal units
 Pg = [mpc.order.bus.i2e(mpc.gen(:,GEN_BUS)) Pg*mpc.baseMVA];
-Qg = [mpc.order.bus.i2e(mpc.gen(:,GEN_BUS)) Qg*mpc.baseMVA];
+Qg = [mpc.order.bus.i2e(mpc.gen(:,GEN_BUS)) mpc.gen(mpc.order.gen.i2e(1:ng),QMIN) mpc.gen(mpc.order.gen.i2e(1:ng),QMAX) Qg*mpc.baseMVA];
+
+if useVoltageControl
+    Vp = [(1:ng)' mpc.order.bus.i2e(mpc.gen(:,GEN_BUS)) Vp];
+    Vn = [(1:ng)' mpc.order.bus.i2e(mpc.gen(:,GEN_BUS)) Vn];
+end
 
 s = mpc.order.gen.e2i;
 % sort according to external indexing
@@ -152,28 +184,43 @@ Va = [mpc.order.bus.i2e(mpc.bus(:,BUS_I)) Va*180/pi];
 Vm = [mpc.order.bus.i2e(mpc.bus(:,BUS_I)) Vm];
 
 Sflow = [(1:size(branch,1))' branch(:,[F_BUS T_BUS RATE_A]) Sflow];
+Pflow = [(1:size(branch,1))' branch(:,[F_BUS T_BUS]) Pflow];
+Qflow = [(1:size(branch,1))' branch(:,[F_BUS T_BUS]) Qflow];
 
 %% make tables
 
 varnames_pg = {'BUS'};
-varnames_qg = {'BUS'};
+varnames_qg = {'BUS', 'QMIN', 'QMAX'};
 varnames_va = {'BUS'};
 varnames_vm = {'BUS'};
 varnames_S = {'BRANCH','FROM','TO','RATE_A'};
+varnames_vp = {'GEN', 'BUS'};
+varnames_vn = {'GEN', 'BUS'};
+varnames_pflow = {'BRANCH','FROM','TO'};
+varnames_qflow = {'BRANCH','FROM','TO'};
+
 for i=1:nc
 	if i == 1
 		stringIdx = '';
 	else
 		stringIdx = num2str(i);
 	end
-	
+	varnames_vp{i+2} = ['VP' stringIdx];
+    varnames_vn{i+2} = ['VN' stringIdx];
     varnames_pg{i+1} = ['PG' stringIdx];
-    varnames_qg{i+1} = ['QG' stringIdx];
+    varnames_qg{i+3} = ['QG' stringIdx];
     varnames_va{i+1} = ['VA' stringIdx];
     varnames_vm{i+1} = ['VM' stringIdx];
     varnames_S{2*i+3} = ['SF' stringIdx];
     varnames_S{2*i+4} = ['ST' stringIdx];
+    varnames_pflow{3*i+1} = ['PF' stringIdx];
+    varnames_pflow{3*i+2} = ['PT' stringIdx];
+    varnames_pflow{3*i+3} = ['PLOSS' stringIdx];
+    varnames_qflow{3*i+1} = ['QF' stringIdx];
+    varnames_qflow{3*i+2} = ['QT' stringIdx];
+    varnames_qflow{3*i+3} = ['QLOSS' stringIdx];    
 end
+
 
 Pg_table = array2table(Pg,...
     'VariableNames',varnames_pg);
@@ -183,10 +230,20 @@ Vm_table = array2table(Vm,'VariableNames',varnames_vm);
 Va_table = array2table(Va,'VariableNames',varnames_va);
 
 S_table = array2table(Sflow,'VariableNames',varnames_S);
+Pflow_table = array2table(Pflow,'VariableNames',varnames_pflow);
+Qflow_table = array2table(Qflow,'VariableNames',varnames_qflow);
+if useVoltageControl
+    Vp_table = array2table(Vp,'VariableNames',varnames_vp);
+    Vn_table = array2table(Vn,'VariableNames',varnames_vn);
+    Vsp_table = array2table(Vsp,'VariableNames',{'VSP'});
+end
 
 tab = struct();
-[tab.Pg,tab.Qg,tab.Va,tab.Vm, tab.S] = deal(Pg_table,Qg_table,Va_table,Vm_table, S_table);
-
+[tab.Pg,tab.Qg,tab.Va,tab.Vm, tab.S, tab.Pflow, tab.Qflow] = ...
+    deal(Pg_table,Qg_table,Va_table,Vm_table, S_table, Pflow_table, Qflow_table);
+if useVoltageControl
+    [tab.Vp, tab.Vn, tab.Vsp] = deal(Vp_table,Vn_table,Vsp_table);
+end
 %display(Pg_table);
 
 %[Vm mpc.bus(:,VMIN) mpc.bus(:,VMAX) Lambda.upper(vv.i1.Vm:vv.iN.Vm)]

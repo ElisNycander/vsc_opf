@@ -16,8 +16,8 @@ idxLoadIncreaseBuses = bus2(:,LOAD_INCREASE_AREA) == 1;
 nLoadIncreaseBuses = sum(idxLoadIncreaseBuses);
  
 % do pfs quietly
-mpopt.out.all = 0;
-mpopt.verbose = 0;
+%mpopt.out.all = 0;
+%mpopt.verbose = 0;
 
 ycounter = 0;
 success = 1;
@@ -42,7 +42,7 @@ for i=1:N
 	
 	Pg = table2array(results.Pg(:,i+1));
 	Pg = Pg(~isnan(Pg));
-	Qg = table2array(results.Qg(:,i+1));
+	Qg = table2array(results.Qg(:,i+3));
 	Qg = Qg(~isnan(Pg));
 	gen(:,[PG QG]) = [Pg Qg];
 	

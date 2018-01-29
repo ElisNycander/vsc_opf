@@ -73,6 +73,11 @@ om = opf_model(mpc);
   % contingency variables
   % note that for each contingency we have a new set of
   % Vm,Va,Pg(ngc_idx),Qg
+  
+if optns.useVoltageControl
+    
+end
+  
   for i=1:nc
       
       if i == 1 % base case
@@ -82,8 +87,23 @@ om = opf_model(mpc);
           om = add_vars(om, 'Pg', ng, Pg, Pmin, Pmax);
           om = add_vars(om, 'Qg', ng, Qg, Qmin, Qmax);
           
+          if optns.useVoltageControl
+                om = add_vars(om, 'Vp', ng, zeros(ng,1), zeros(ng,1)); % no upper limit
+                om = add_vars(om, 'Vn', ng, zeros(ng,1), zeros(ng,1)); % 
+                om = add_vars(om, 'Vsp', ng, gen(:,VG), ...
+                        bus(gen(:,GEN_BUS),VMIN), bus(gen(:,GEN_BUS),VMAX) );
+              
+          end
+          
           om = add_constraints(om, 'Pmis', nb, 'nonlinear');
           om = add_constraints(om, 'Qmis', nb, 'nonlinear');
+          
+          if optns.useVoltageControl
+          % complementarity constraints
+          om = add_constraints(om, 'Cp',ng, 'nonlinear');
+          om = add_constraints(om, 'Cn',ng, 'nonlinear');
+          om = add_constraints(om, 'Vbal',ng,'nonlinear');
+          end
           
           om = add_constraints(om, 'Sf', nConstrainedLines, 'nonlinear');
           om = add_constraints(om, 'St', nConstrainedLines, 'nonlinear');
@@ -121,10 +141,27 @@ om = opf_model(mpc);
           om = add_vars(om, ['Pg' stringIdx], nPvar, iPg, iPmin, iPmax);
           om = add_vars(om, ['Qg' stringIdx], nQvar, iQg, iQmin, iQmax);
           
+          if optns.useVoltageControl
+                % add variables except for Vsp which is the same for all
+                % cases
+                ing = cs.nActiveGenerators(i);
+                om = add_vars(om, ['Vp' stringIdx], ing, zeros(ing,1), zeros(ing,1)); % no upper limit
+                om = add_vars(om, ['Vn' stringIdx], ing, zeros(ing,1), zeros(ing,1)); %
+                
+          end
           %%- DONT ADD CONSTRAINTS AS THESE ARE NOT USED
           % power balance
           om = add_constraints(om, ['Pmis' stringIdx], nb, 'nonlinear');
           om = add_constraints(om, ['Qmis' stringIdx], nb, 'nonlinear');
+          
+          if optns.useVoltageControl
+              % complementarity constraints
+              om = add_constraints(om, ['Cp' stringIdx] ,ing, 'nonlinear');
+              om = add_constraints(om, ['Cn' stringIdx] ,ing, 'nonlinear');
+              om = add_constraints(om, ['Vbal' stringIdx] ,ing,'nonlinear');
+          end
+          
+          
           % branch flows - may be less than nConstrainedLines for line outages
           %nConstrainedActiveLines = sum(idxConstrainedLines .* cs.activeLines(:,i));
           om = add_constraints(om, ['Sf' stringIdx], cs.nConstrainedActiveLines(i), 'nonlinear');

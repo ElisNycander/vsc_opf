@@ -48,8 +48,15 @@ mpc = get_mpc(om);
     deal(mpc.baseMVA, mpc.bus, mpc.gen, mpc.branch,mpc.contingencies, mpc.gen2, mpc.bus2);
 [Ybus, Yf, Yt, load] = deal(cs.Ybus, cs.Yf, cs.Yt, cs.load);
 [vv, ~, nn] = get_idx(om);
-
+[~,vl,vu] = getv(om); % upper variable bounds
 lim_type = mpopt.opf.flow_lim; %% branch flow limit type
+
+if isfield(vv.i1,'Vsp')
+    useVoltageControl = 1;
+else
+    useVoltageControl = 0;
+end
+
 %% problem dimensions
 nb = size(bus, 1);          %% number of buses
 %nl = size(branch, 1);       %% number of branches
@@ -65,7 +72,18 @@ idxConstrainedLines = cs.constrainedActiveLines(:,1);
 nConstrainedLines = cs.nConstrainedActiveLines(1);
 
 %% preallocate return variables
-g = zeros(2*nb*nc,1);
+if useVoltageControl
+    nNonlinEqConstr = 0;
+    fs = fields(nn.N);
+    for i=1:length(fs)
+        if isempty(strfind(fs{i},'Sf')) &&  isempty(strfind(fs{i},'St'))
+            nNonlinEqConstr = nNonlinEqConstr + nn.N.(fs{i});
+        end
+    end
+    g = zeros(nNonlinEqConstr,1);
+else
+    g = zeros(2*nb*nc,1);
+end
 dg = zeros(length(g),nxyz);
 
 if nConstrainedLines % prepare for line flow constraints
@@ -156,6 +174,19 @@ for i=1:nc     % loop over all cases, including base case
     %g(1+(i-1)*2*nb:2*i*nb) = [real(mis); imag(mis)];
     g(gcounter+1:gcounter+nMismatch) = [real(mis); imag(mis)];
 
+    %% complementarity constraints
+    if useVoltageControl
+        iVp = vv.i1.(['Vp' sidx]):vv.iN.(['Vp' sidx]);
+        iVn = vv.i1.(['Vn' sidx]):vv.iN.(['Vn' sidx]);
+        iVsp = vv.i1.Vsp:vv.iN.Vsp;
+        Vsp = x(iVsp);
+        Vactual = Vm(gen(idxActiveGenerators,GEN_BUS));
+        Cp = (Qg - gen(idxActiveGenerators,QMIN)/baseMVA).*x(iVp);
+        Cn = (Qg - gen(idxActiveGenerators,QMAX)/baseMVA).*x(iVn);
+        Vbal =  x(iVp)-x(iVn)+Vsp(idxActiveGenerators)-Vactual;
+        g(gcounter+nMismatch+1:gcounter+nMismatch+3*nActiveGenerators) = [Cp;Cn;Vbal];
+    end
+    
     
     if nConstrainedLines > 0 % then, the inequality constraints (branch flow limits)
         
@@ -215,17 +246,73 @@ for i=1:nc     % loop over all cases, including base case
         neg_CgQ(sub2ind([nb nQg],gen(idxActiveGenerators,GEN_BUS)',1:nQg)) = -1;
         %neg_CgQ = sparse(gen(idxActiveGenerators,GEN_BUS), 1:ng,-1,nb,ng); %% Qbus w.r.t. Qg
         
-        %% construct Jacobian of equality (power flow) constraints and transpose it
-        dg(1+2*nb*(i-1):2*nb*i, [iVa iVm iPg iQg]) = [
-            real([dSbus_dVa dSbus_dVm]) neg_CgP zeros(nb, nQg);  %% P mismatch w.r.t Va, Vm, Pg, Qg
-            imag([dSbus_dVa dSbus_dVm]) zeros(nb, nPg) neg_CgQ;  %% Q mismatch w.r.t Va, Vm, Pg, Qg
-            ];
-        
-        if nPg < ng
-            dg(sub2ind(size(dg),gen(idxPfix,GEN_BUS)+2*nb*(i-1),idxPfix+vv.i1.Pg-1)) = - ones(1, nPfix);
-            % add derivative terms wrt base case P for fixed generators
-            %dg(1+2*nb*(i-1):nb+2*nb*(i-1),pfix_idx+vv.i1.Pg-1) = -ones(nb,ng-PgcN);
+        %% complementarity constraints
+        if useVoltageControl
+            dCpdQg = diag(x(iVp));
+            dCndQg = diag(x(iVn));
+%             dCpdQg = diag(iVp);
+%             dCndQg = diag(iVn);
+            
+            %dCpdVp = diag(Qg-gen(idxActiveGenerators,QMIN)/baseMVA);
+            %dCndVn = diag(Qg-gen(idxActiveGenerators,QMAX)/baseMVA);
+            dCpdVp = diag(Qg-vl(iQg));
+            dCndVn = diag(Qg-vu(iQg));
+            
+            zm = zeros(nActiveGenerators);
+            
+            dVbaldVm = zeros(nActiveGenerators,nb);
+            dVbaldVm(sub2ind(size(dVbaldVm), 1:nActiveGenerators, gen(idxActiveGenerators,GEN_BUS)'  )) = -ones(1,nActiveGenerators);
+            dVbaldVp = diag(ones(nActiveGenerators,1));
+            dVbaldVn = -diag(ones(nActiveGenerators,1));
+            dVbaldVsp = zeros(nActiveGenerators,ng);
+            dVbaldVsp(sub2ind(size(dVbaldVsp),1:nActiveGenerators,find(idxActiveGenerators)' )) = ones(1,nActiveGenerators);
         end
+        %% construct Jacobian of equality (power flow) constraints and transpose it
+        %         dg(1+2*nb*(i-1):2*nb*i, [iVa iVm iPg iQg]) = [
+        %             real([dSbus_dVa dSbus_dVm]) neg_CgP zeros(nb, nQg);  %% P mismatch w.r.t Va, Vm, Pg, Qg
+        %             imag([dSbus_dVa dSbus_dVm]) zeros(nb, nPg) neg_CgQ;  %% Q mismatch w.r.t Va, Vm, Pg, Qg
+        %             ];
+        if useVoltageControl
+            if i == 1 % base case
+                dg(1+gcounter:gcounter+nMismatch+3*nActiveGenerators, [iVa iVm iPg iQg iVp iVn iVsp]) = [
+                    real([dSbus_dVa dSbus_dVm]) neg_CgP zeros(nb, nQg) zeros(nb,3*nActiveGenerators);  %% P mismatch w.r.t Va, Vm, Pg, Qg
+                    imag([dSbus_dVa dSbus_dVm]) zeros(nb, nPg) neg_CgQ zeros(nb,3*nActiveGenerators);  %% Q mismatch w.r.t Va, Vm, Pg, Qg
+                    zeros(nActiveGenerators,2*nb+nPg) dCpdQg dCpdVp zm zm;
+                    zeros(nActiveGenerators,2*nb+nPg) dCndQg zm dCndVn zm;
+                    zeros(nActiveGenerators,nb) dVbaldVm zm zm            dVbaldVp dVbaldVn dVbaldVsp;
+                    ];
+            else % contingency scenarios: same number of constraints, but Vsp from base case 
+                dg(1+gcounter:gcounter+nMismatch+3*nActiveGenerators, [iVa iVm iPg iQg iVp iVn]) = [
+                    real([dSbus_dVa dSbus_dVm]) neg_CgP zeros(nb, nQg) zeros(nb,2*nActiveGenerators);  %% P mismatch w.r.t Va, Vm, Pg, Qg
+                    imag([dSbus_dVa dSbus_dVm]) zeros(nb, nPg) neg_CgQ zeros(nb,2*nActiveGenerators);  %% Q mismatch w.r.t Va, Vm, Pg, Qg
+                    zeros(nActiveGenerators,2*nb+nPg) dCpdQg dCpdVp zm;
+                    zeros(nActiveGenerators,2*nb+nPg) dCndQg zm dCndVn;
+                    zeros(nActiveGenerators,nb) dVbaldVm zeros(nActiveGenerators,nPg) zm            dVbaldVp dVbaldVn;
+                    ];
+                % coefficients for Vsp
+                dg(sub2ind(size(dg),1+gcounter+nMismatch+2*nActiveGenerators:gcounter+nMismatch+3*nActiveGenerators, ...
+                       iVsp(idxActiveGenerators)) )=ones(1,nActiveGenerators);
+                   
+                   
+                if nPg < ng % coefficients for PmisX wrt Pbase for fixed generators
+                   dg(sub2ind(size(dg),gen(idxPfix,GEN_BUS)+gcounter,idxPfix+vv.i1.Pg-1)) = -ones(1,nPfix);  
+                end
+            end
+            
+            
+        else
+            dg(1+2*nb*(i-1):2*nb*i, [iVa iVm iPg iQg]) = [
+                real([dSbus_dVa dSbus_dVm]) neg_CgP zeros(nb, nQg);  %% P mismatch w.r.t Va, Vm, Pg, Qg
+                imag([dSbus_dVa dSbus_dVm]) zeros(nb, nPg) neg_CgQ;  %% Q mismatch w.r.t Va, Vm, Pg, Qg
+                ];
+            if nPg < ng
+                dg(sub2ind(size(dg),gen(idxPfix,GEN_BUS)+2*nb*(i-1),idxPfix+vv.i1.Pg-1)) = - ones(1, nPfix);
+                % add derivative terms wrt base case P for fixed generators
+                %dg(1+2*nb*(i-1):nb+2*nb*(i-1),pfix_idx+vv.i1.Pg-1) = -ones(nb,ng-PgcN);
+            end
+        end
+        
+       
 
        
         %% JACOBIAN FOR BRANCH LIMITS
@@ -276,6 +363,9 @@ for i=1:nc     % loop over all cases, including base case
 	end
 	
 	% increase counters
+    if useVoltageControl
+        gcounter = gcounter + 3*nActiveGenerators;
+    end
     gcounter = gcounter + nMismatch;
     hcounter = hcounter + nBranchLimits;
     ycounter = ycounter + nActiveLines;
