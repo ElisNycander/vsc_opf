@@ -1,4 +1,10 @@
 function [success, mpcArray] = verify_solutions(results,om,optns)
+% Verify solutions by running power flows. 
+% The values from the tables in results are entered into the mpc struct for
+% each case, and the power flow should in the first iteration, except when
+% it needs to make conversions from PV buses to PQ buses
+% Note that it would be possible to determine from the lagrange multipliers
+% which buses should be converted as well.
 
 %clear;
 
@@ -8,7 +14,7 @@ function [success, mpcArray] = verify_solutions(results,om,optns)
 
 define_constants;
 
-mpc = get_mpc(om);
+mpc = get_mpc(om); % Note: mpc here uses internal indexing
 [cs,bus2,baseMVA,version] = deal(mpc.contingencies,mpc.bus2,mpc.baseMVA,mpc.version);
 [mpopt] = deal(optns.mpopt);
 [N,list,nActiveLines, activeLines] = deal(cs.N,cs.list,cs.nActiveLines,cs.activeLines);
@@ -38,14 +44,26 @@ for i=1:N
     
    %% gen matrix	
     % deactivate generators
-    gen = gen(cs.activeGenerators(:,i),:);
+
+    %gen = gen(cs.activeGenerators(:,i),:); % remove inactive generators
 	
-	Pg = table2array(results.Pg(:,i+2));
-	Pg = Pg(~isnan(Pg));
+	Pg = table2array(results.Pg(:,i+2)); % Note: Pg and Qg uses external indexing
+	%Pg = Pg(~isnan(Pg)); % remove NaN for inactive generators
+    % convert to internal indexing
+    Pg = Pg(mpc.order.gen.e2i,:);
+    
+    
 	Qg = table2array(results.Qg(:,i+2));
-	Qg = Qg(~isnan(Pg));
+	%Qg = Qg(~isnan(Pg));
+    % convert to internal indexing
+    Qg = Qg(mpc.order.gen.e2i,:);
+    
 	gen(:,[PG QG]) = [Pg Qg];
 	
+    % remove inactive generators
+    idxInactive = isnan(gen(:,PG));
+    gen(idxInactive,:) = [];
+    
     % enter bus voltages into gen
     for ii=1:size(gen,1)
         gen(ii,VG) = bus(gen(ii,GEN_BUS)==bus(:,BUS_I),VM);

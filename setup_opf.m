@@ -35,9 +35,9 @@ end
 nConstrainedLines = sum(idxConstrainedLines);
 
 %% create (read-only) copies of individual fields for convenience
-[baseMVA, bus, gen, branch, gencost, Au, lbu, ubu, mpopt, ...
-    N, fparm, H, Cw, z0, zl, zu, userfcn] = opf_args(mpc, mpopt);
-
+% [baseMVA, bus, gen, branch, gencost, Au, lbu, ubu, mpopt, ...
+%     N, fparm, H, Cw, z0, zl, zu, userfcn] = opf_args(mpc, mpopt);
+[baseMVA, bus, gen] = deal(mpc.baseMVA,mpc.bus,mpc.gen);
 
 
 %% set up initial variables and bounds

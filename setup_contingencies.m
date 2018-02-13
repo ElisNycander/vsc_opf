@@ -1,4 +1,9 @@
 function mpc = setup_contingencies(mpc,optns)
+% Construct lists of active generators, active lines, and stacked
+% Y-matrices for each scenario, to be used when evaluating constraint and 
+% objective functions.
+% Note: mpc is converted to internal ordering, but contingencies and
+% settings are given in external ordering. 
 
 define_constants;
 
@@ -50,7 +55,8 @@ ng = size(mpc.gen,1);
 
 [bus,bus2,branch,gen2,gen] = deal(mpc.bus,mpc.bus2,mpc.branch,mpc.gen2,mpc.gen);
 
-idxCurtail = find(gen2(:,PTYPE) == PCUR);
+
+idxCurtail = find(gen2(:,PTYPE) == PCUR); % note e2i
 nCurtail = length(idxCurtail);
 
 % find lines with constraints

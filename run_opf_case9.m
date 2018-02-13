@@ -9,6 +9,7 @@ optns = struct();
 optns.outputFile = '';
 
 optns.caseFile = 'case9';
+eval(['mpc=' optns.caseFile ';']);
 optns.contingencyFile = 'case9_contingencies';
 optns.stabilityMargin = 0.1;
 
@@ -21,9 +22,9 @@ optns.lamdaTolerance = 1e-8; % round smaller lambda to 0 for tables
 % extra generators           
 %	bus	Pg	Qg	Qmax	Qmin	Vg	mBase	status	Pmax	Pmin	           
 optns.gen.extra = [
-    4   50 0   0       0       1   100     1       1e3     0
-    6   50 0   0       0       1   100     1       1e3     0
-    8   50 0   0       0       1   100     1       1e3     0
+    2   50 0   0       0       1   100     1       1e3     0
+    1   50 0   0       0       1   100     1       1e3     0
+%    8   50 0   0       0       1   100     1       1e3     0
 ];
 
 %% the active power of generators can either be:
@@ -32,19 +33,19 @@ optns.gen.extra = [
 % 3 Curtailable - can be curtailed relative to base case in contingencies
 % Note: Variable is default
 optns.gen.fixedP = [];
-optns.gen.curtailableP = [4 5 6];
-optns.gen.variableP = [1 2 3];
+optns.gen.curtailableP = [4 5];
+optns.gen.variableP = [];
 % include non-variable p in optimization or not, may take given values as "market outcome"
-optns.gen.optimizeBaseP = 0; 
+optns.gen.optimizeBaseP = 1; 
 
-optns.gen.maxPg = [1:6]; % generators for which to max production (must be fixed)
-optns.gen.maxPgLim = [3000];
+%optns.gen.maxPg = [1:6]; % generators for which to max production (must be fixed)
+%optns.gen.maxPgLim = [3000];
 
 % wind power scenarios - stored in columns, with as many rows as there are
 % curtailable generators, or just one row, in which case the same scenario
 % is applied to all curtailable generators
 optns.gen.windScenarios = [
-    70 100 130 150
+    70 100 130 %150
 ];
 % probabilities for wind scenarios, empty means all scenarios equally
 % likely
@@ -88,7 +89,7 @@ foptions.MaxIter = 200;
 optns = check_opf_options(optns);
 
 %% SETUP MATPOWER CASE
-mpc = setup_mpc(optns);
+mpc = setup_mpc(mpc,optns);
 
 
 %% RUN INITIAL POWER FLOW FOR BASE CASE
@@ -100,11 +101,15 @@ assert(mpci.success == 1,'Initial power flow was unsuccessful');
 % copy base case values, for initial guess
 mpc.gen(:,[QG PG]) = mpci.gen(:,[QG PG]);
 mpc.bus(:,[VM VA]) = mpci.bus(:,[VM VA]);
-%% CONTINGENCIES
-mpc = setup_contingencies(mpc,optns); 
+
 
 %% convert to internal indexing
 mpc = ext2int(mpc);
+
+%% CONTINGENCIES
+mpc = setup_contingencies(mpc,optns); 
+
+
 
 
 %% SETUP OPTIMIZATION OBJECT

@@ -232,7 +232,7 @@ for i=1:nc     % loop over all cases, including base case
         
         %% dPi/dPg
         if i == 1 % base case
-            if includePgBase % include Pg for base case as optimization variables
+            if includePgBase % include Pg for base case as optimization variables (all Pg)
                 nPg = vv.N.(['Pg' sidx]);
                 neg_CgP = zeros(nb, nPg);
                 neg_CgP(sub2ind(size(neg_CgP),gen(:,GEN_BUS)',1:nPg)) = -1;

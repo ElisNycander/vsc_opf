@@ -1,8 +1,14 @@
-function mpc = setup_mpc(optns)
+function mpc = setup_mpc(mpc,optns)
+% Adds the following matrices to the mpc struct:
+% gen2
+% bus2
+%
+% Also modifies branch matrix
+% Note: Uses external indexing
 
 define_constants;
 
-mpc = eval([optns.caseFile]);
+%mpc = eval([optns.caseFile]);
 
 %% extra generators
 ng = size(mpc.gen,1);
@@ -10,11 +16,47 @@ ng_extra = size(optns.gen.extra,1);
 nrow = size(optns.gen.extra,2);
 % add extra generators
 mpc.gen(ng+1:ng+ng_extra,1:nrow) = optns.gen.extra;
-if ~isfield(optns.gen,'extra_cost') 
-   mpc.gencost(ng+1:ng+ng_extra,1:size(mpc.gencost,2)) = 0; 
-else
-   mpc.gencost(ng+1:ng+ng_extra,1:size(optns.gen.extra_cost,2)) = optns.gen.extra_cost;
+
+% only do this if cost matrix exists
+if isfield(mpc,'gencost')
+    if ~isfield(optns.gen,'extra_cost')
+        % add zero matrix
+        mpc.gencost(ng+1:ng+ng_extra,1:size(mpc.gencost,2)) = 0;
+    else
+        % add new cost information
+        mpc.gencost(ng+1:ng+ng_extra,1:size(optns.gen.extra_cost,2)) = optns.gen.extra_cost;
+    end
 end
+
+% define all generators as active 
+inactiveGen = find(mpc.gen(:,GEN_STATUS) == 0);
+if ~isempty(inactiveGen)
+    warning('Inactive generators were set to active in base scenario')
+    mpc.gen(inactiveGen,GEN_STATUS) = 1;
+end
+
+% set VG for new generators to VG for old generators at that bus
+for i=1:ng_extra
+   thisGenIdx = ng+i;
+   thisBus = mpc.gen(thisGenIdx,GEN_BUS);
+   sameBusGenIdx = find(mpc.gen(1:ng,GEN_BUS)==thisBus);
+   if ~isempty(sameBusGenIdx)
+        mpc.gen(thisGenIdx,VG) = mpc.gen(sameBusGenIdx(1),VG); % choose first generator at this bus
+        warning('VG set point at new generators changed to agree with old generators')
+   end
+end
+    
+% % compensate PG to maintain active power balance
+% % find all generators at buses where to perform compensation
+% compGen = [];
+% for i=1:length(optns.compBuses)
+%     compGen = [compGen find(mpc.gen(:,GEN_BUS)==optns.compBuses(i))];
+% end
+% if isempty(compGen)
+%    % compensate att  
+%     
+% end
+
 
 %% extra lines
 
@@ -26,9 +68,8 @@ end
 % gen2
 mpc.gen2 = [];
 for i=1:size(mpc.gen,1)
-    mpc.gen2(i,[GEN_BUS PMAXIMIZE]) = ...
+    mpc.gen2(i,[GEN_BUS]) = ...
         [mpc.gen(i,GEN_BUS) ...
-         ismember(i,optns.gen.maxPg) ...
       ];
     if ismember(i,optns.gen.fixedP)
         mpc.gen2(i,PTYPE) = PFIX;
@@ -38,9 +79,6 @@ for i=1:size(mpc.gen,1)
         mpc.gen2(i,PTYPE) = PVAR;
     end
 end
-
-% change limits of generators which are being maximized
-mpc.gen(mpc.gen2(:,PMAXIMIZE)==1,PMAX) = optns.gen.maxPgLim;
 
 
 % bus2
@@ -55,7 +93,7 @@ for i=1:size(mpc.bus,1)
 end
 
 
-mpc.stabilityMargin = optns.stabilityMargin;
+%mpc.stabilityMargin = optns.stabilityMargin;
 
 
 % branch flow limits

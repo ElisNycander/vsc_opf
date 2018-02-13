@@ -1,4 +1,9 @@
 function [results,tab] = get_opf_results(om,x,Lambda,optns)
+% Collect results from opf into matrices with one column for each
+% contingency.
+% Concerning indexing: 
+% Internal indexing for buses changes BUS_I but not the order of the rows
+% Internal indexing for generators only changes order of the rows
 
 %% for script
 % clear;
@@ -189,20 +194,23 @@ for i=1:nc
 end
 
 % put gen bus in matrix, convert to nominal units
-Pg = [mpc.order.bus.i2e(1:ng) mpc.order.bus.i2e(mpc.gen(:,GEN_BUS)) Pg*mpc.baseMVA];
-Qg = [mpc.order.bus.i2e(1:ng) mpc.order.bus.i2e(mpc.gen(:,GEN_BUS)) Qg*mpc.baseMVA];
-genExt = mpc.order.bus.i2e(1:ng);
+Pg = [mpc.order.gen.e2i mpc.order.bus.i2e(mpc.gen(:,GEN_BUS)) Pg*mpc.baseMVA];
+Qg = [mpc.order.gen.e2i mpc.order.bus.i2e(mpc.gen(:,GEN_BUS)) Qg*mpc.baseMVA];
+
+genExt = mpc.order.gen.e2i;
 busExt = mpc.order.bus.i2e(mpc.gen(:,GEN_BUS));
+
 PgU = [genExt busExt PgU];
 PgL = [genExt busExt PgL];
 QgU = [genExt busExt QgU];
 QgL = [genExt busExt QgL];
 
-Beta = [mpc.order.bus.i2e(idxCurtail) mpc.order.bus.i2e(mpc.gen(idxCurtail,GEN_BUS)) Beta];
+%Beta = [mpc.order.gen.i2e(idxCurtail) mpc.order.bus.i2e(mpc.gen(idxCurtail,GEN_BUS)) Beta];
+Beta = [mpc.order.gen.e2i(idxCurtail) mpc.order.bus.i2e(mpc.gen(idxCurtail,GEN_BUS)) Beta];
 expCurtail = [cs.probabilities(1:end)'; sum(Curtail,1); ...
               cs.probabilities(1:end)'.*sum(Curtail,1)];
-Curtail = [mpc.order.gen.i2e(idxCurtail) mpc.order.bus.i2e(mpc.gen(idxCurtail,GEN_BUS)) Curtail];
-Wind = [mpc.order.gen.i2e(idxCurtail) mpc.order.bus.i2e(mpc.gen(idxCurtail,GEN_BUS)) Wind];
+Curtail = [mpc.order.gen.e2i(idxCurtail) mpc.order.bus.i2e(mpc.gen(idxCurtail,GEN_BUS)) Curtail];
+Wind = [mpc.order.gen.e2i(idxCurtail) mpc.order.bus.i2e(mpc.gen(idxCurtail,GEN_BUS)) Wind];
 % add row with sum of curtailment
 % Curtail = [Curtail; sum(Curtail,1)]; 
 % Curtail(end,1:2) = NaN;
@@ -210,7 +218,7 @@ Wind = [mpc.order.gen.i2e(idxCurtail) mpc.order.bus.i2e(mpc.gen(idxCurtail,GEN_B
 %expCurtail = sum(Curtail(:,3:end),1)
 
 
-s = mpc.order.gen.e2i;
+s = mpc.order.gen.i2e;
 % sort according to external indexing
 Pg = Pg(s,:);
 Qg = Qg(s,:);
@@ -218,6 +226,12 @@ PgU = PgU(s,:);
 PgL = PgL(s,:);
 QgU = QgU(s,:);
 QgL = QgL(s,:);
+
+[~,sortIdx] = sort(mpc.order.gen.e2i(idxCurtail));
+Beta = Beta(sortIdx,:);
+Curtail = Curtail(sortIdx,:);
+Wind = Wind(sortIdx,:);
+% 
 
 % put bus nr in Va
 Va = [mpc.order.bus.i2e(mpc.bus(:,BUS_I)) Va*180/pi];
