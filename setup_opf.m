@@ -146,5 +146,15 @@ om = opf_model(mpc);
           %nConstrainedActiveLines = sum(idxConstrainedLines .* cs.activeLines(:,i));
           om = add_constraints(om, ['Sf' stringIdx], cs.nConstrainedActiveLines(i), 'nonlinear');
           om = add_constraints(om, ['St' stringIdx], cs.nConstrainedActiveLines(i), 'nonlinear');
+          
+          
+          % add PQ constraints: Qg<Pg
+          % Note: If P 
+%           if optns.gen.optimizeBaseP % then add PQcapability for fixed generators as constraints
+%             om = add_constraints(om, ['PQcap' stringIdx],2*nQvar, 'linear');
+%           else
+%               om = add_constraints(om, ['PQcap' stringIdx], 2*(nPvar+nCurtail)
+%           end
+          
       end
   end

@@ -243,11 +243,11 @@ VmL = [busExt VmL];
 VaU = [busExt VaU];
 VaL = [busExt VaL];
 
-Sflow = [(1:size(branch,1))' branch(:,[F_BUS T_BUS RATE_A]) Sflow];
-Sflow_lam = [(1:size(branch,1))' branch(:,[F_BUS T_BUS RATE_A]) Sflow_lam];
+Sflow = [(1:size(branch,1))' mpc.order.bus.i2e(branch(:,F_BUS)) mpc.order.bus.i2e(branch(:,T_BUS)) branch(:,RATE_A) Sflow];
+Sflow_lam = [(1:size(branch,1))' mpc.order.bus.i2e(branch(:,F_BUS)) mpc.order.bus.i2e(branch(:,T_BUS)) branch(:,RATE_A) Sflow_lam];
 
 % set multipliers below threshold to 0
-thrs = optns.lamdaTolerance;
+thrs = optns.lambdaTolerance;
 Sflow_lam(Sflow_lam < thrs) = 0;
 PgU(PgU < thrs) = 0;
 PgL(PgL < thrs) = 0;
@@ -311,12 +311,78 @@ Wind_table = array2table(Wind,'VariableNames',varnames_wind);
 S_table = array2table(Sflow,'VariableNames',varnames_S);
 S_lam_table = array2table(Sflow_lam,'VariableNames',varnames_S);
 
+
+
+%% find non-zero multipliers
+str = '';
+vars = {'PgU','PgL','QgU','QgL','VmU','VmL','VaU','VaL','Sflow_lam'};
+
+for i=1:length(vars)
+    switch vars{i} % exclude columns which don't contain multipliers
+        case 'PgU'
+            exclColIdx = [1 2];
+        case 'PgL'
+            exclColIdx = [1 2];
+        case 'QgU'
+            exclColIdx = [1 2];
+        case 'QgL'
+            exclColIdx = [1 2];
+        case 'VmU'
+            exclColIdx = [1];
+        case 'VmL'
+            exclColIdx = [1];
+        case 'VaU'
+            exclColIdx = [1];
+        case 'VaL'
+            exclColIdx = [1];
+        case 'Sflow_lam'
+            exclColIdx = 1:4;
+    end
+        
+    eval(['mat=' vars{i} ';']);
+    mat(:,exclColIdx) = []; % remove columns
+    nzIdx = find(mat > optns.lambdaTolerance);
+    nanIdx = find(isnan(mat));
+    nzIdx = setdiff(nzIdx,nanIdx); % non-zero entries that are not NaN
+    
+    if ~isempty(nzIdx)
+        % add information to string
+        for j=1:length(nzIdx)
+            [row,col] = ind2sub(size(mat),nzIdx(j));
+            sInfo = '';
+            switch vars{i}
+                case 'PgU'
+                    sInfo = sprintf('PG max: Gen %i, Scenario %i',[PgU(row,1) col]);
+                case 'PgL'
+                    sInfo = sprintf('PG min: Gen %i, Scenario %i',[PgL(row,1) col]);
+                case 'QgU'
+                     sInfo = sprintf('QG max: Gen %i, Scenario %i',[QgU(row,1) col]);
+                case 'QgL'
+                    sInfo = sprintf('QG min: Gen %i, Scenario %i',[QgL(row,1) col]);
+                case 'VmU'
+                   sInfo = sprintf('VM max: Bus %i, Scenario %i',[VmU(row,1) col]);
+                case 'VmL'
+                    sInfo = sprintf('VM min: Bus %i, Scenario %i',[VmL(row,1) col]);
+                case 'VaU'
+                    sInfo = sprintf('VA max: Bus %i, Scenario %i',[VaU(row,1) col]);
+                case 'VaL'
+                    sInfo = sprintf('VA min: Bus %i, Scenario %i',[VaL(row,1) col]);
+                case 'Sflow_lam'
+                    sInfo = sprintf('Sflow Max: Branch %i, %i-%i, Scenario %i',[Sflow_lam(row,[1:3]) ceil(col/2)]);
+                    
+            end
+            str = [str sprintf('\n') sInfo];
+        end
+    end
+end
+lamInfo = str;
+
 tab = struct();
 [tab.Pg,tab.Qg,tab.Va,tab.Vm, tab.S, tab.Slam, tab.Curtail] = deal(Pg_table,Qg_table,Va_table,Vm_table, S_table, S_lam_table, Curtail_table);
 [tab.PgUlam,tab.PgLlam,tab.QgUlam,tab.QgLlam,tab.VmUlam,tab.VmLlam,tab.VaUlam,tab.VaLlam, tab.Beta] = ...
     deal(Pg_lamU_table,Pg_lamL_table,Qg_lamU_table,Qg_lamL_table,Vm_lamU_table,Vm_lamL_table,Va_lamU_table,Va_lamL_table, Beta_table);
 [tab.ExpCurtail, tab.Wind] = deal(expCurtail_table, Wind_table);
-
+[tab.lamInfo] = deal(lamInfo);
 
 results = mpc;
 [results.bus, results.branch, results.gen, results.gen2, results.bus2, ...

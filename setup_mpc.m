@@ -80,6 +80,11 @@ for i=1:size(mpc.gen,1)
     end
 end
 
+if ~isempty(optns.gen.pqFactor)
+    mpc.gen2(:,PQ_FACTOR) = optns.gen.pqFactor;
+else
+    mpc.gen2(:,PQ_FACTOR) = 0;
+end
 
 % bus2
 mpc.bus2 = [];

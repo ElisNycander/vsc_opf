@@ -30,25 +30,49 @@ end
 
 %% Pg for all generators
 figure;
-PH1 = bar(1:N,table2array(table.Pg(:, ...
-    setdiff(table.Pg.Properties.VariableNames,{'GEN','BUS'})))' ...
-);
+PgMat = table2array(table.Pg(:, setdiff(table.Pg.Properties.VariableNames,{'GEN','BUS'})));
+PH1 = bar(1:N,PgMat');
+% change distinguish wind farms from other generators
+for i=1:length(optns.gen.curtailableP)
+   PH1(optns.gen.curtailableP(i)).EdgeColor = [1 0 0]; 
+end
+
 grid on;
 xlabel('Contingency scenario');
 ylabel('Pg (MW)')
 legend(genLabels);
 title('Active power')
 
+
+
+
 %% Qg for all generators
 figure;
 PH2 = bar(1:N,table2array(table.Qg(:, ...
     setdiff(table.Qg.Properties.VariableNames,{'GEN','BUS'})))' ...
 );
+for i=1:length(optns.gen.curtailableP)
+   PH2(optns.gen.curtailableP(i)).EdgeColor = [1 0 0]; 
+end
+
 grid on;
 xlabel('Contingency scenario');
 ylabel('Qg (MW)')
 legend(genLabels);
 title('Reactive power')
+
+%% Wind Penetration
+PgMat(isnan(PgMat)) = 0;
+windPG = sum(PgMat(optns.gen.curtailableP,:),1);
+totPG = sum(PgMat(),1);
+penetration = windPG./totPG;
+
+figure;
+bar(1:N,penetration*100);
+grid on;
+xlabel('Scenario');
+ylabel('Wind Penetration (%)');
+title('Penetration');
 
 %% Curtailment for Pcur
 figure;
