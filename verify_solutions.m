@@ -34,7 +34,7 @@ for i=1:N
  
 	%% bus matrix
    % enter voltages into bus matrix
-    Vm = table2array(results.Vm(:,i+1));
+    Vm = table2array(results.Vm(:,i+3));
 	Va = table2array(results.Va(:,i+1));
     bus(:,VM) = Vm;
     bus(:,VA) = Va;
@@ -47,13 +47,13 @@ for i=1:N
 
     %gen = gen(cs.activeGenerators(:,i),:); % remove inactive generators
 	
-	Pg = table2array(results.Pg(:,i+2)); % Note: Pg and Qg uses external indexing
+	Pg = table2array(results.Pg(:,i+4)); % Note: Pg and Qg uses external indexing
 	%Pg = Pg(~isnan(Pg)); % remove NaN for inactive generators
     % convert to internal indexing
     Pg = Pg(mpc.order.gen.e2i,:);
     
     
-	Qg = table2array(results.Qg(:,i+2));
+	Qg = table2array(results.Qg(:,i+4));
 	%Qg = Qg(~isnan(Pg));
     % convert to internal indexing
     Qg = Qg(mpc.order.gen.e2i,:);

@@ -11,7 +11,7 @@ function [PH1,PH2,PH3,PH4,PH5,PH6] = plot_results(table,optns)
 %nCont = mpc.contingencies.nContingencies;
 %nScen = mpc.contingencies.nScenarios;
 %N = mpc.contingencies.N;
-N = size(table.Vm,2)-1;
+N = size(table.Vm,2)-3;
 
 %% make legends
 ng = size(table.Pg,1);
@@ -30,7 +30,7 @@ end
 
 %% Pg for all generators
 figure;
-PgMat = table2array(table.Pg(:, setdiff(table.Pg.Properties.VariableNames,{'GEN','BUS'})));
+PgMat = table2array(table.Pg(:, setdiff(table.Pg.Properties.VariableNames,{'GEN','BUS','MIN','MAX'})));
 PH1 = bar(1:N,PgMat');
 % change distinguish wind farms from other generators
 for i=1:length(optns.gen.curtailableP)
@@ -49,7 +49,7 @@ title('Active power')
 %% Qg for all generators
 figure;
 PH2 = bar(1:N,table2array(table.Qg(:, ...
-    setdiff(table.Qg.Properties.VariableNames,{'GEN','BUS'})))' ...
+    setdiff(table.Qg.Properties.VariableNames,{'GEN','BUS','MIN','MAX'})))' ...
 );
 for i=1:length(optns.gen.curtailableP)
    PH2(optns.gen.curtailableP(i)).EdgeColor = [1 0 0]; 

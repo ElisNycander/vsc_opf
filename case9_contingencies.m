@@ -5,10 +5,10 @@ function c = case9_contingencies
 % type: 0 - no contingency, 1- line trip,  2 - generator trip
 % CONT_TYPE   CONT_IDX  LOAD_MULT LINE_MULT  CONT_PROB  
 c = [
-    0    0      1       0                       % neutral scenario 
+%    0    0      1       0                       % neutral scenario 
 %	0     0    1.1      0                       % 10% load increase
 %     0     0    0.9     0 % 10 % load decrease
-%    1     2    1       0   % trip line 2
+    1     2    1       0   % trip line 2
 % 	1     3    1       0   % trip line 3
 % 	1     5    1       0   % trip line 5
 % 	1     6    1       0   % trip line 6

@@ -10,9 +10,21 @@ function [results,tab] = get_opf_results(om,x,Lambda,optns)
 % close all;
 % load('vscopf_post_processing_data.mat');
 
+
+
+%% Notes
+% 1. To change the table columns, they must be changed in this file, in 
+% the following places:
+% * Making the table data
+% * Making the table labels
+% The column indices must also be updated in 
+% * plot_results
+% * verify_solutions
+%
 %%
 define_constants;
 [vv, ll, nn] = get_idx(om);
+[v0,vl,vu] = getv(om);
 mpc = get_mpc(om);
 mpopt = optns.mpopt;
 [cs,gen,bus,bus2,gen2,branch,baseMVA] = deal(mpc.contingencies,mpc.gen,mpc.bus,mpc.bus2,mpc.gen2,mpc.branch,mpc.baseMVA);
@@ -40,6 +52,7 @@ nCurtail = length(idxCurtail);
 %% containers
 Pg = zeros(ng,nc);
 Qg = zeros(ng,nc);
+% lagrange multipliers
 PgU = zeros(ng,nc);
 PgL = zeros(ng,nc);
 QgU = zeros(ng,nc);
@@ -143,6 +156,7 @@ for i=1:nc
         Qg(:,i) = x(iQg);
         QgL(:,i) = Lambda.lower(iQg);
         QgU(:,i) = Lambda.upper(iQg);
+        
     end
     
     Wind(:,i) = cs.wind(1+(i-1)*nCurtail:i*nCurtail); 
@@ -176,8 +190,8 @@ for i=1:nc
             Sflow(active_lines,2*i) = real(iSt)*baseMVA;
         else
             %Sf(:,i) = abs(iSf)*baseMVA;
-            Sflow(active_lines,2*i-1) = (abs(iSf)).^2*baseMVA;
-            Sflow(active_lines,2*i) = (abs(iSt)).^2*baseMVA;
+            Sflow(active_lines,2*i-1) = (abs(iSf))*baseMVA;
+            Sflow(active_lines,2*i) = (abs(iSt))*baseMVA;
         end
         
     end
@@ -193,12 +207,14 @@ for i=1:nc
     countLines = countLines + inl;
 end
 
+
 % put gen bus in matrix, convert to nominal units
-Pg = [mpc.order.gen.e2i mpc.order.bus.i2e(mpc.gen(:,GEN_BUS)) Pg*mpc.baseMVA];
-Qg = [mpc.order.gen.e2i mpc.order.bus.i2e(mpc.gen(:,GEN_BUS)) Qg*mpc.baseMVA];
+Pg = [mpc.order.gen.e2i mpc.order.bus.i2e(mpc.gen(:,GEN_BUS)) mpc.gen(:,PMIN) mpc.gen(:,PMAX) Pg*mpc.baseMVA];
+Qg = [mpc.order.gen.e2i mpc.order.bus.i2e(mpc.gen(:,GEN_BUS)) mpc.gen(:,QMIN) mpc.gen(:,QMAX) Qg*mpc.baseMVA];
 
 genExt = mpc.order.gen.e2i;
 busExt = mpc.order.bus.i2e(mpc.gen(:,GEN_BUS));
+
 
 PgU = [genExt busExt PgU];
 PgL = [genExt busExt PgL];
@@ -211,11 +227,6 @@ expCurtail = [cs.probabilities(1:end)'; sum(Curtail,1); ...
               cs.probabilities(1:end)'.*sum(Curtail,1)];
 Curtail = [mpc.order.gen.e2i(idxCurtail) mpc.order.bus.i2e(mpc.gen(idxCurtail,GEN_BUS)) Curtail];
 Wind = [mpc.order.gen.e2i(idxCurtail) mpc.order.bus.i2e(mpc.gen(idxCurtail,GEN_BUS)) Wind];
-% add row with sum of curtailment
-% Curtail = [Curtail; sum(Curtail,1)]; 
-% Curtail(end,1:2) = NaN;
-% table with sum of curtailment and probabilities
-%expCurtail = sum(Curtail(:,3:end),1)
 
 
 s = mpc.order.gen.i2e;
@@ -235,7 +246,7 @@ Wind = Wind(sortIdx,:);
 
 % put bus nr in Va
 Va = [mpc.order.bus.i2e(mpc.bus(:,BUS_I)) Va*180/pi];
-Vm = [mpc.order.bus.i2e(mpc.bus(:,BUS_I)) Vm];
+Vm = [mpc.order.bus.i2e(mpc.bus(:,BUS_I)) mpc.bus(:,VMIN) mpc.bus(:,VMAX) Vm];
 busExt = mpc.order.bus.i2e(mpc.bus(:,BUS_I));
 
 VmU = [busExt VmU];
@@ -261,13 +272,16 @@ VaL(VaL < thrs) = 0;
 %% make tables
 varnames_beta = {'GEN', 'BUS'};
 varnames_curtail = {'GEN','BUS'};
-varnames_pg = {'GEN', 'BUS'};
-varnames_qg = {'GEN', 'BUS'};
+varnames_pg = {'GEN', 'BUS' 'MIN' 'MAX'};
+varnames_qg = {'GEN', 'BUS' 'MIN' 'MAX'};
+varnames_pglam = {'GEN','BUS'};
+varnames_qglam = {'GEN','BUS'};
 varnames_va = {'BUS'};
-varnames_vm = {'BUS'};
+varnames_vm = {'BUS','MIN','MAX'};
 varnames_S = {'BRANCH','FROM','TO','RATE_A'};
 varnames_expcurtail = {};
 varnames_wind = {'GEN','BUS'};
+varnames_vmlam = {'BUS'};
 for i=1:nc
 	if i == 1
 		stringIdx = '';
@@ -275,10 +289,13 @@ for i=1:nc
 		stringIdx = num2str(i);
 	end
 	
-    varnames_pg{i+2} = ['PG' stringIdx];
-    varnames_qg{i+2} = ['QG' stringIdx];
+    varnames_pg{i+4} = ['PG' stringIdx];
+    varnames_qg{i+4} = ['QG' stringIdx];
+    varnames_pglam{i+2} = ['PG' stringIdx];
+    varnames_qglam{i+2} = ['QG' stringIdx];
     varnames_va{i+1} = ['VA' stringIdx];
-    varnames_vm{i+1} = ['VM' stringIdx];
+    varnames_vmlam{i+1} = ['VM' stringIdx];
+    varnames_vm{i+3} = ['VM' stringIdx];
     varnames_S{2*i+3} = ['SF' stringIdx];
     varnames_S{2*i+4} = ['ST' stringIdx];
     varnames_beta{i+2} = ['BETA' stringIdx];
@@ -295,12 +312,12 @@ Qg_table = array2table(Qg,...
 Vm_table = array2table(Vm,'VariableNames',varnames_vm);
 Va_table = array2table(Va,'VariableNames',varnames_va);
 
-Pg_lamU_table = array2table(PgU,'VariableNames',varnames_pg);
-Pg_lamL_table = array2table(PgL,'VariableNames',varnames_pg);
-Qg_lamU_table = array2table(QgU,'VariableNames',varnames_qg);
-Qg_lamL_table = array2table(QgL,'VariableNames',varnames_qg);
-Vm_lamU_table = array2table(VmU,'VariableNames',varnames_vm);
-Vm_lamL_table = array2table(VmL,'VariableNames',varnames_vm);
+Pg_lamU_table = array2table(PgU,'VariableNames',varnames_pglam);
+Pg_lamL_table = array2table(PgL,'VariableNames',varnames_pglam);
+Qg_lamU_table = array2table(QgU,'VariableNames',varnames_qglam);
+Qg_lamL_table = array2table(QgL,'VariableNames',varnames_qglam);
+Vm_lamU_table = array2table(VmU,'VariableNames',varnames_vmlam);
+Vm_lamL_table = array2table(VmL,'VariableNames',varnames_vmlam);
 Va_lamU_table = array2table(VaU,'VariableNames',varnames_va);
 Va_lamL_table = array2table(VaL,'VariableNames',varnames_va);
 

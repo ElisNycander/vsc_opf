@@ -41,9 +41,10 @@ optns.gen.extra = [
 ];
 
 % for PQ capability
-optns.gen.pqFactor = ones(size(mpc.gen,1)+size(optns.gen.extra,1),1);
+%optns.gen.pqFactor = ones(size(mpc.gen,1)+size(optns.gen.extra,1),1); % constraint omitted for 0 value
+optns.gen.pqFactor = zeros(size(mpc.gen,1)+size(optns.gen.extra,1),1);
+optns.gen.usePQConstraints = 1;
 
-    
 %mpc.gen(11,PG) = mpc.gen(11,PG)-50;
 %mpc.gen(10,PG) = mpc.gen(10,PG)-50;
 %optns.gen.compBuses = [4021 4012]; % generators at these buses will have their PG decreased to compensate for extra generation in base case
@@ -103,7 +104,7 @@ rateA( and( rateA == 0,mpc.branch(:,RATE_A)==0 ) ) = [ ...
    833.3
 ];
 rateA( mpc.branch(:,RATE_A) ~= 0) = mpc.branch( mpc.branch(:,RATE_A) ~= 0,RATE_A );
-%optns.branch.rateA = rateA;
+optns.branch.rateA = rateA;
 
 
 optns.branch.duplicate = []; % duplicate these branches
@@ -117,7 +118,7 @@ optns.bus.loadIncrease = []; % buses with load increase for contingencies
 optns.mpopt = mpoption();
 
 optns.mpopt.pf.enforce_q_lims = 1;
-optns.mpopt.opf.flow_lim = 'P';
+optns.mpopt.opf.flow_lim = 'S';
 
 %% solver options
 foptions = optimoptions('fmincon','Algorithm','interior-point','GradObj','on','GradConstr','on');
