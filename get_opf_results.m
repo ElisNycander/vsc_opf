@@ -329,6 +329,26 @@ S_table = array2table(Sflow,'VariableNames',varnames_S);
 S_lam_table = array2table(Sflow_lam,'VariableNames',varnames_S);
 
 
+%% table with PQ-capability constraints
+pqGens = find(optns.gen.pqFactor);
+qCols = {};
+pCols = {};
+for i=1:nc
+    if i == 1
+        stringIdx = '';
+    else
+        stringIdx = num2str(i);
+    end
+    qCols{i}=['QG' stringIdx];
+    pCols{i}=['PG' stringIdx];
+    
+    
+end
+Ptmp = Pg_table(pqGens,pCols);
+Qtmp = Qg_table(pqGens,qCols);
+Label_tmp = Pg_table(pqGens,{'GEN','BUS'});
+Cap_tmp = array2table(optns.gen.pqFactor(pqGens),'VariableNames',{'PQ_FACTOR'});
+PQ_table = [Label_tmp Cap_tmp Ptmp Qtmp];
 
 %% find non-zero multipliers
 str = '';
@@ -398,7 +418,7 @@ tab = struct();
 [tab.Pg,tab.Qg,tab.Va,tab.Vm, tab.S, tab.Slam, tab.Curtail] = deal(Pg_table,Qg_table,Va_table,Vm_table, S_table, S_lam_table, Curtail_table);
 [tab.PgUlam,tab.PgLlam,tab.QgUlam,tab.QgLlam,tab.VmUlam,tab.VmLlam,tab.VaUlam,tab.VaLlam, tab.Beta] = ...
     deal(Pg_lamU_table,Pg_lamL_table,Qg_lamU_table,Qg_lamL_table,Vm_lamU_table,Vm_lamL_table,Va_lamU_table,Va_lamL_table, Beta_table);
-[tab.ExpCurtail, tab.Wind] = deal(expCurtail_table, Wind_table);
+[tab.ExpCurtail, tab.Wind, tab.PQ] = deal(expCurtail_table, Wind_table,PQ_table);
 [tab.lamInfo] = deal(lamInfo);
 
 results = mpc;

@@ -16,7 +16,7 @@ c = [
 % 	1     9    1       0   % trip line 9
 	
 % %     1     2    1       0.5   % weaken line 2    
-     2     1    1       0   % trip generator 1
+%     2     1    1       0   % trip generator 1
 % 	2     2    1       0   % trip generator 1
 %	2     3    1       0   % trip generator 1
 

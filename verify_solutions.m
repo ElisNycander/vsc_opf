@@ -15,18 +15,21 @@ function [success, mpcArray] = verify_solutions(results,om,optns)
 define_constants;
 
 mpc = get_mpc(om); % Note: mpc here uses internal indexing
-[cs,bus2,baseMVA,version] = deal(mpc.contingencies,mpc.bus2,mpc.baseMVA,mpc.version);
+[cs,bus2,baseMVA,version,gen2] = deal(mpc.contingencies,mpc.bus2,mpc.baseMVA,mpc.version,mpc.gen2);
 [mpopt] = deal(optns.mpopt);
 [N,list,nActiveLines, activeLines] = deal(cs.N,cs.list,cs.nActiveLines,cs.activeLines);
 idxLoadIncreaseBuses = bus2(:,LOAD_INCREASE_AREA) == 1;
 nLoadIncreaseBuses = sum(idxLoadIncreaseBuses);
  
+idxPQFactor = gen2(:,PQ_FACTOR) ~= 0;
+PQFactors = gen2(idxPQFactor,PQ_FACTOR);
+
 % do pfs quietly
 mpopt.out.all = 0;
 mpopt.verbose = 0;
 
 ycounter = 0;
-success = 1;
+success = ones(1,N);
 for i=1:N
    
    
@@ -59,7 +62,17 @@ for i=1:N
     Qg = Qg(mpc.order.gen.e2i,:);
     
 	gen(:,[PG QG]) = [Pg Qg];
-	
+    
+    %% modified Q-limits
+    % Note: Those generators with PQ-constraints effectively have reduced Q
+    % limits. These must be carried over to the new mpc struct to get the
+    % same results. Note that PQ-constraints are only applied to
+    % contingency cases
+    if (i>1) && optns.gen.usePQConstraints
+        gen(idxPQFactor,[QMIN QMAX]) = [-PQFactors.*abs(Pg(idxPQFactor)) ...
+            PQFactors.*abs(Pg(idxPQFactor)) ];
+    end
+        
     % remove inactive generators
     idxInactive = isnan(gen(:,PG));
     gen(idxInactive,:) = [];
@@ -68,6 +81,7 @@ for i=1:N
     for ii=1:size(gen,1)
         gen(ii,VG) = bus(gen(ii,GEN_BUS)==bus(:,BUS_I),VM);
     end
+    
 	
 	%% branch matrix
 	% change impedance
@@ -89,7 +103,7 @@ for i=1:N
         V1 = impc.bus(:,VM).*exp(1j*pi/180*impc.bus(:,VA));
         diff = sum(abs(V0-V1));
         if diff > mpopt.pf.tol
-            success = 0;
+            success(i) = 0;
         end
     end
     

@@ -164,7 +164,7 @@ om = opf_model(mpc);
   end
   
   %% linear constraints for PQ capabilities
-  if optns.gen.usePQConstraints
+  if optns.gen.usePQConstraints && ~isempty(find(optns.gen.pqFactor,1))
       vv = get_idx(om);
       x0 = getv(om);
       n = length(x0);
@@ -202,29 +202,18 @@ om = opf_model(mpc);
           PVarCount = 1;
           PCurCount = 1;
           for j=1:ng
-              if idxActive(j) && idxPQFactor(j) % generator active, add constraint
-                  
-                  qidx = iQgVar(gIdx);
-                  % find corresponding active generation
-                  if idxPVar(j) % variable P
-                      pidx = iPgVar(PVarCount);
-                      % add coefficients to A
-                      A(Aidx,qidx) = 1;
-                      A(Aidx,pidx) = -gen2(j,PQ_FACTOR);
-                      vl(Aidx) = -inf; vu(Aidx) = 0;
-                      Aidx = Aidx + 1;
-                      A(Aidx,qidx) = -1;
-                      A(Aidx,pidx) = -gen2(j,PQ_FACTOR);
-                      vl(Aidx) = -inf; vu(Aidx) = 0;
-                      Aidx = Aidx + 1;
+              if idxActive(j)
+                  if idxPQFactor(j) % add constraint for generator
                       
-                      PVarCount = PVarCount + 1;
-                  elseif idxPFix(j) % fixed P
-                      % only constraint if P base are optimization
-                      % variables
-                      if optns.gen.optimizeBaseP
-                          pidx = iPBase(j);
+                      qidx = iQgVar(gIdx);
+                      
+                      % find corresponding active generation
+                      if idxPVar(j) % variable P
                           
+                          
+                          
+                          pidx = iPgVar(PVarCount);
+                          % add coefficients to A
                           A(Aidx,qidx) = 1;
                           A(Aidx,pidx) = -gen2(j,PQ_FACTOR);
                           vl(Aidx) = -inf; vu(Aidx) = 0;
@@ -233,40 +222,55 @@ om = opf_model(mpc);
                           A(Aidx,pidx) = -gen2(j,PQ_FACTOR);
                           vl(Aidx) = -inf; vu(Aidx) = 0;
                           Aidx = Aidx + 1;
+                          
+                          PVarCount = PVarCount + 1;
+                      elseif idxPFix(j) % fixed P
+                          % only constraint if P base are optimization
+                          % variables
+                          if optns.gen.optimizeBaseP
+                              pidx = iPBase(j);
+                              
+                              A(Aidx,qidx) = 1;
+                              A(Aidx,pidx) = -gen2(j,PQ_FACTOR);
+                              vl(Aidx) = -inf; vu(Aidx) = 0;
+                              Aidx = Aidx + 1;
+                              A(Aidx,qidx) = -1;
+                              A(Aidx,pidx) = -gen2(j,PQ_FACTOR);
+                              vl(Aidx) = -inf; vu(Aidx) = 0;
+                              Aidx = Aidx + 1;
+                          end
+                          
+                      else % curtailable P
+                          pidx = iBeta(PCurCount);
+                          
+                          A(Aidx,qidx) = 1;
+                          A(Aidx,pidx) = gen2(j,PQ_FACTOR)*wind(PCurCount);
+                          vl(Aidx) = -inf; vu(Aidx) = gen2(j,PQ_FACTOR)*wind(PCurCount);
+                          Aidx = Aidx + 1;
+                          A(Aidx,qidx) = -1;
+                          A(Aidx,pidx) = gen2(j,PQ_FACTOR)*wind(PCurCount);
+                          vl(Aidx) = -inf; vu(Aidx) = gen2(j,PQ_FACTOR)*wind(PCurCount);
+                          Aidx = Aidx + 1;
+                          
+                          PCurCount = PCurCount + 1;
+                          
+                          
                       end
-                      
-                  else % curtailable P
-                      pidx = iBeta(PCurCount);
-                      
-                      A(Aidx,qidx) = 1;
-                      A(Aidx,pidx) = gen2(j,PQ_FACTOR)*wind(PCurCount);
-                      vl(Aidx) = -inf; vu(Aidx) = gen2(j,PQ_FACTOR)*wind(PCurCount);
-                      Aidx = Aidx + 1;
-                      A(Aidx,qidx) = -1;
-                      A(Aidx,pidx) = gen2(j,PQ_FACTOR)*wind(PCurCount);
-                      vl(Aidx) = -inf; vu(Aidx) = gen2(j,PQ_FACTOR)*wind(PCurCount);
-                      Aidx = Aidx + 1;
-                      
-                      PCurCount = PCurCount + 1;     
+                  else % Note: We have iterated over an active generator, although
+                       % we don't have a PQ-constraint for this generator,
+                       % thus the counters still need to be incremented
+                       if idxPVar(j)
+                           PVarCount = PVarCount + 1;
+                       elseif ~idxPFix(j)
+                           PCurCount = PCurCount + 1;
+                       end
+                           
                   end
-                  
-                  gIdx = gIdx + 1;
+
+                  gIdx = gIdx + 1; % increment counter for QG variables
               end
           end
           
-          
-          %           % indices for PQcapability constraints
-          %           if ~optns.gen.optimizeBaseP
-          %               % add some constraints as variable limits
-          %               idxPQcap = and( and( or(idxPVar, idxCurtail), idxActive ) , idxPQFactor);
-          %               nPQcap = sum(idxPQcap);
-          %           else
-          %               % add all constraints as variable limits
-          %               idxPQcap = and( idxActive, idxPQFactor );
-          %               nPQcap = sum(idxPQcap);
-          %           end
-          
-          %   OM = add_constraints(OM, NAME, A, L, U, VARSETS);
           vl = vl.';
           vu = vu.';
           

@@ -31,10 +31,10 @@ optns.gen.extra = [
 %     4047   100 0   0       0       1   100     1       1e3     0   
     
 %% At nodes without generation
-    1011   100 0   0       0       1   100     1       1e3     0
-    2031   100 0   0       0       1   100     1       1e3     0
-    41     100 0   0       0       1   100     1       1e3     0
-    1041   100 0   0       0       1   100     1       1e3     0  
+    1011   0 0   50      -50       1   100     1       1e3     0
+    2031   0 0   50      -50       1   100     1       1e3     0
+    41     0 0   50      -50       1   100     1       1e3     0
+    1041   0 0   50      -50       1   100     1       1e3     0  
     
 %    6   50 0   0       0       1   100     1       1e3     0
 %    8   50 0   0       0       1   100     1       1e3     0
@@ -42,12 +42,29 @@ optns.gen.extra = [
 
 % for PQ capability
 %optns.gen.pqFactor = ones(size(mpc.gen,1)+size(optns.gen.extra,1),1); % constraint omitted for 0 value
-optns.gen.pqFactor = zeros(size(mpc.gen,1)+size(optns.gen.extra,1),1);
-optns.gen.usePQConstraints = 1;
+%optns.gen.pqFactor = zeros(size(mpc.gen,1)+size(optns.gen.extra,1),1);
+% optns.gen.pqFactor = [
+% %     ones(3,1)
+% %     zeros(10,1)
+% %     1
+% %     1
+% %     0.01
+% %     2
+% %     zeros(10,1)
+% zeros(13,1)
+% 100
+% zeros(13,1)
+%    % zeros(24,1)
+%    % 2*ones(23,1)
+%    % zeros(4,1)
+% ];
+optns.gen.pqFactor = 2*ones(27,1);
+
 
 %mpc.gen(11,PG) = mpc.gen(11,PG)-50;
 %mpc.gen(10,PG) = mpc.gen(10,PG)-50;
 %optns.gen.compBuses = [4021 4012]; % generators at these buses will have their PG decreased to compensate for extra generation in base case
+
 
 %% the active power of generators can either be:
 % 1 Variable - can vary freely for all contingencies
@@ -59,7 +76,7 @@ optns.gen.curtailableP = [24 25 26 27];
 optns.gen.variableP = [];
 % include non-variable p in optimization or not, may take given values as "market outcome"
 optns.gen.optimizeBaseP = 0; 
-
+optns.gen.usePQConstraints = 1;
 
 % wind power scenarios - stored in columns, with as many rows as there are
 % curtailable generators, or just one row, in which case the same scenario
@@ -172,7 +189,7 @@ end
 
 
 [x0,LB,UB] = getv(om);
-
+[A,L,U] = linear_constraints(om);
 %mpc = runpf(mpc,optns.mpopt);
 % x0 = [pi/180*mpc.order.int.bus(:,VA); 
 %      mpc.order.int.bus(:,VM);
@@ -188,7 +205,7 @@ end
 
 t0 = clock();
 [x, f, success, Output, Lambda] = ...
-  fmincon(f_fcn, x0, [], [], [], [], LB, UB, g_fcn, foptions);
+  fmincon(f_fcn, x0, A, U, [], [], LB, UB, g_fcn, foptions);
 et = etime(clock,t0);
 fprintf(['Time: %0.3f s'],et)
 fprintf(['\nObjective function: %0.1f'],f*mpc.baseMVA);
@@ -199,7 +216,7 @@ fprintf(['\nObjective function: %0.1f'],f*mpc.baseMVA);
 
 if optns.verify == 1
     success = verify_solutions(table,om,optns);
-    fprintf(['\nSolutions verified: %i'],success);
+    fprintf(['\nSolutions verified: %i'],sum(success)==mpc.contingencies.N);
 end
 %fd = fopen('output.txt','at');
 %printpf(results,optns.fileID);'
@@ -207,15 +224,16 @@ end
 % vv = get_idx(om);
 % tab.Qg
 % 180/pi*x(vv.i1.Va1:vv.iN.Va1)
-table.Vm
+%table.Vm
 table.Pg
-table.Beta
-table.Curtail
-table.ExpCurtail
+%table.Beta
+%table.Curtail
+%table.ExpCurtail
 table.Qg
-table.S
-table.Slam
-table.lamInfo
+%table.S
+%table.Slam
+%table.lamInfo
+table.PQ
 
 [h,g] = g_fcn(x);
 g_dev = sum(abs(g))

@@ -22,9 +22,9 @@ optns.lambdaTolerance = 1e-4; % round smaller lambda to 0 for tables
 % extra generators           
 %	bus	Pg	Qg	Qmax	Qmin	Vg	mBase	status	Pmax	Pmin	           
 optns.gen.extra = [
-    4   50 0   50       -50       1   100     1       inf     0
-    6   50 0   50       -50       1   100     1       inf     0
-    8   50 0   50       -50       1   100     1       inf     0
+     4   50   0    50       -50       1   100     1       inf     0
+     6   50 0   50       -50       1   100     1       inf     0
+     8   50 0   50       -50       1   100     1       inf     0
 ];
 
 %% the active power of generators can either be:
@@ -32,11 +32,11 @@ optns.gen.extra = [
 % 2 Fixed - set by base case power flow
 % 3 Curtailable - can be curtailed relative to base case in contingencies
 % Note: Variable is default
-optns.gen.fixedP = [1];
-optns.gen.curtailableP = [4 5 6];
+optns.gen.fixedP = [2];
+optns.gen.curtailableP = [4];
 optns.gen.variableP = [];
-% include non-variable p in optimization or not, may take given values as "market outcome"
-optns.gen.optimizeBaseP = 1; 
+% include base case P-values in optimization or not, may take given values as "market outcome"
+optns.gen.optimizeBaseP = 0; 
 optns.gen.usePQConstraints = 1;
 
 %optns.gen.maxPg = [1:6]; % generators for which to max production (must be fixed)
@@ -46,7 +46,7 @@ optns.gen.usePQConstraints = 1;
 % curtailable generators, or just one row, in which case the same scenario
 % is applied to all curtailable generators
 optns.gen.windScenarios = [
-    150
+    350
 ];
 % probabilities for wind scenarios, empty means all scenarios equally
 % likely
@@ -56,15 +56,16 @@ optns.gen.windProbabilities = [
 % will be constructed as [wind scenarios x contingencies]
 optns.gen.useWindScenarios = 1;
 
-%optns.gen.pqFactor = ones(6,1);
-optns.gen.pqFactor = [2; 0.5; ones(1,1); 1/10*ones(3,1)];
+optns.gen.pqFactor = 0.01*ones(6,1);
+%optns.gen.pqFactor = [2; 0.05; ones(1,1); 1/10*ones(3,1)];
+%optns.gen.pqFactor = [0; zeros(1,1); 0.01; zeros(3,1)];
 
 %% branch options
 optns.branch.limit = 1; % turn on/off branch limits 
 optns.branch.rateA = [ % branch limits, 0 means line is unconstrained
-    150*ones(3,1);
-    140;
-    150*ones(5,1);
+    130*ones(3,1);
+    150;
+    170*ones(5,1);
 ];
 
 optns.branch.duplicate = []; % duplicate these branches
@@ -78,7 +79,7 @@ optns.bus.loadIncrease = [5 7 9]; % buses with load increase for contingencies
 optns.mpopt = mpoption();
 
 optns.mpopt.pf.enforce_q_lims = 1;
-optns.mpopt.opf.flow_lim = 'P';
+optns.mpopt.opf.flow_lim = 'S';
 
 %% solver options
 foptions = optimoptions('fmincon','Algorithm','interior-point','GradObj','on','GradConstr','on');
@@ -149,8 +150,8 @@ end
 t0 = clock();
 [x, f, success, Output, Lambda] = ...
   fmincon(f_fcn, x0, A, U, [], [], LB, UB, g_fcn, foptions);
-% [x, f, success, Output, Lambda] = ...
-%   fmincon(f_fcn, x0, [], [], [], [], LB, UB, g_fcn, foptions);
+
+
 et = etime(clock,t0);
 fprintf(['Time: %0.3f s'],et)
 fprintf(['\nObjective function: %0.1f'],f*mpc.baseMVA);
@@ -161,7 +162,8 @@ fprintf(['\nObjective function: %0.1f'],f*mpc.baseMVA);
 
 if optns.verify == 1
     success = verify_solutions(table,om,optns);
-    fprintf(['\nSolutions verified: %i'],success);
+    %fprintf(['\nSolutions verified: %i'],success);
+    fprintf(['\nSolutions verified: %i'],sum(success)==mpc.contingencies.N);
 end
 %fd = fopen('output.txt','at');
 %printpf(results,optns.fileID);'
@@ -169,7 +171,7 @@ end
 % vv = get_idx(om);
 % tab.Qg
 % 180/pi*x(vv.i1.Va1:vv.iN.Va1)
-% table.Vm
+ table.Vm
  table.Pg
 % table.Beta
 % table.Curtail
@@ -178,6 +180,9 @@ end
 % table.S
 % table.Slam
 %table.lamInfo
+table.PQ
+
+success
 
 [h,g] = g_fcn(x);
 g_dev = sum(abs(g))
