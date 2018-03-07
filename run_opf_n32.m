@@ -31,7 +31,12 @@ optns.gen.optimizeBaseWind = 0; % include base case Pwind as optimization variab
 optns.gen.usePQConstraints = 1;
 
 optns.saveFigures = 1;
-optns.caseName = 'case3';
+optns.saveData = 1;
+optns.caseName = 'case4';
+
+% activate/deactivate given wind power scenarios, if active the scenarios
+% will be constructed as [wind scenarios x contingencies]
+optns.gen.useWindScenarios = 1;
 %%
 mpc = n32_define_areas(mpc);
 
@@ -127,7 +132,11 @@ optns.gen.pqFactor = [
 % 2 Fixed - set by base case power flow
 % 3 Curtailable - can be curtailed relative to base case in contingencies
 % Note: Variable is default
-optns.gen.fixedP = [15 16 17 18];
+%optns.gen.fixedP = [15 16 17 18];
+%optns.gen.fixedP = [15:18 20 21];
+gen_bus_2_digits = rem(mpc.gen(:,GEN_BUS),100);
+fixedP_boolean = and(gen_bus_2_digits > 40, gen_bus_2_digits < 70);
+optns.gen.fixedP = find(fixedP_boolean);
 optns.gen.curtailableP = [24:24+size(optns.gen.extra,1)-1];
 optns.gen.variableP = [];
 % include non-variable p in optimization or not, may take given values as "market outcome"
@@ -190,15 +199,19 @@ if optns.useOlaussonScenarios
 else
     optns.gen.windScenarios = [500];
 end
+
+    % increase and decrease in wind production
+    optns.gen.windScenarios = [
+        optns.gen.windScenarios * [0.8 1.2]
+     ];
 %northSynchGen = sum(mpc.gen
 
 % probabilities for wind scenarios, empty means all scenarios equally
 % likely
 optns.gen.windProbabilities = [
 ];
-% activate/deactivate given wind power scenarios, if active the scenarios
-% will be constructed as [wind scenarios x contingencies]
-optns.gen.useWindScenarios = 1;
+
+
 
 %% branch options
 optns.branch.limit = 1; % turn on/off branch limits 
@@ -262,6 +275,8 @@ mpc = setup_mpc(mpc,optns);
 
 % set min and max values for PG (not present in N32)
 mpc.gen(:,[PMAX PMIN]) = [mpc.gen(:,MBASE) zeros(size(mpc.gen,1),1)];
+% fix P limits for synchronous condenser
+mpc.gen(find(mpc.bus(:,BUS_I)==4041),PMAX) = 0;
 
 %% RUN INITIAL POWER FLOW FOR BASE CASE
 % do pfs quietly
@@ -324,32 +339,36 @@ fprintf(['Time: %0.3f s'],et)
 fprintf(['\nObjective function: %0.1f'],f*mpc.baseMVA);
 %[x0 x Lambda.lower Lambda.upper LB UB]
 
-[results,table] = get_opf_results(om,x,Lambda,optns);
-[results.et, results.f, results.success] = deal(et,f,success);
+[rescase,restab] = get_opf_results(om,x,Lambda,optns);
+[rescase.et, rescase.f, rescase.success] = deal(et,f,success);
 
 if optns.verify == 1
-    success = verify_solutions(table,om,optns);
+    success = verify_solutions(restab,om,optns);
     fprintf(['\nSolutions verified: %i'],sum(success)==mpc.contingencies.N);
 end
+
+if optns.saveData == 1
+    save([optns.caseName '.mat'],'rescase','restab','om','x','Lambda','optns');
+end
 %fd = fopen('output.txt','at');
-%printpf(results,optns.fileID);'
+%printpf(rescase,optns.fileID);'
 
 % vv = get_idx(om);
 % tab.Qg
 % 180/pi*x(vv.i1.Va1:vv.iN.Va1)
-%table.Vm
-table.Pg
-%table.Beta
-%table.Curtail
-%table.ExpCurtail
-table.Qg
-%table.S
-%table.Slam
-%table.lamInfo
-table.PQ
+%restab.Vm
+restab.Pg
+%restab.Beta
+%restab.Curtail
+%restab.ExpCurtail
+restab.Qg
+%restab.S
+%restab.Slam
+%restab.lamInfo
+restab.PQ
 
 [h,g] = g_fcn(x);
 g_dev = sum(abs(g))
 h_dev = min(abs(h))
 
-plot_results(table,optns);
+plot_results(restab,optns);
