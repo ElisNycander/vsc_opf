@@ -96,7 +96,11 @@ om = opf_model(mpc);
           om = add_vars(om, 'Va', nb, Va, Val, Vau);
           om = add_vars(om, 'Vm', nb, Vm, bus(:, VMIN), bus(:, VMAX));
           if optns.gen.optimizeBaseP % include active power for base case as optimization variables
-            om = add_vars(om, 'Pg', ng, Pg, Pmin, Pmax);
+            %  if optns.gen.optimizeBaseWind
+             %     om = add_vars(om, 'Pg', ng-nCurtail, Pg(~idxCurtail), Pmin(~idxCurtail), Pmax(idxCurtail));
+             % else
+                  om = add_vars(om, 'Pg', ng, Pg, Pmin, Pmax);
+             % end
           end
           om = add_vars(om, 'Qg', ng, Qg, Qmin, Qmax);
           

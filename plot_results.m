@@ -29,7 +29,7 @@ for i=1:ncur
 end
 
 %% Pg for all generators
-figure;
+F1 = figure;
 PgMat = table2array(table.Pg(:, setdiff(table.Pg.Properties.VariableNames,{'GEN','BUS','MIN','MAX'})));
 PH1 = bar(1:N,PgMat');
 % change distinguish wind farms from other generators
@@ -43,11 +43,11 @@ ylabel('Pg (MW)')
 legend(genLabels);
 title('Active power')
 
-
+MaximizeFigureWindow();
 
 
 %% Qg for all generators
-figure;
+F2 = figure;
 PH2 = bar(1:N,table2array(table.Qg(:, ...
     setdiff(table.Qg.Properties.VariableNames,{'GEN','BUS','MIN','MAX'})))' ...
 );
@@ -61,22 +61,26 @@ ylabel('Qg (MW)')
 legend(genLabels);
 title('Reactive power')
 
+MaximizeFigureWindow();
+
 %% Wind Penetration
 PgMat(isnan(PgMat)) = 0;
 windPG = sum(PgMat(optns.gen.curtailableP,:),1);
 totPG = sum(PgMat(),1);
 penetration = windPG./totPG;
 
-figure;
-bar(1:N,penetration*100);
+F3 = figure;
+PH3 = bar(1:N,penetration*100);
 grid on;
 xlabel('Scenario');
 ylabel('Wind Penetration (%)');
 title('Penetration');
 
+
+
 %% Curtailment for Pcur
-figure;
-PH3 = bar(1:N, table2array(table.Curtail(:, ...
+F4 = figure;
+PH4 = bar(1:N, table2array(table.Curtail(:, ...
     setdiff(table.Curtail.Properties.VariableNames,{'GEN','BUS'})))' ...
 );
 grid on;
@@ -86,8 +90,8 @@ legend(curLabels);
 title('Curtailment')
 
 %% Beta for Pcur
-figure;
-PH4 = bar(1:N, table2array(table.Beta(:, ...
+F5 = figure;
+PH5 = bar(1:N, table2array(table.Beta(:, ...
     setdiff(table.Beta.Properties.VariableNames,{'GEN','BUS'})))' ...
 );
 grid on;
@@ -101,8 +105,8 @@ title('Curtailment fraction beta')
 curtail = table2array(table.Curtail(:,setdiff( table.Curtail.Properties.VariableNames,{'GEN','BUS'})));
 curtailedTotal = sum(curtail,1);
 
-figure;
-PH5 = bar(1:N, curtailedTotal);
+F6 = figure;
+PH6 = bar(1:N, curtailedTotal);
 grid on;
 xlabel('Contingency scenario');
 ylabel('Curtailment (MW)');
@@ -112,10 +116,20 @@ title('Total curtailment')
 wind = table2array(table.Wind(:,setdiff(table.Wind.Properties.VariableNames,{'GEN','BUS'})));
 windTotal = sum(wind,1);
 
-figure;
-PH6 = bar(1:N, 100*curtailedTotal./windTotal);
+F7 = figure;
+PH7 = bar(1:N, 100*curtailedTotal./windTotal);
 grid on;
 xlabel('Contingency scenario');
 ylabel('Curtailment (%)');
 title('Total curtailment')
+
+figureArray = [F1 F2 F3 F4 F5 F6 F7];
+figNames = {'Pg','Qg','WindPenetration','CutailMW','CurtailFraction','CurtailTot','CurtailTotPc'};
+if optns.saveFigures
+   for i=1:length(figureArray)
+       thisFigureName = [optns.caseName '_' figNames{i}];
+        saveas(figureArray(i),['figures/' thisFigureName '.fig']);
+        saveas(figureArray(i),['figures/' thisFigureName '.png']);
+   end
+end
 

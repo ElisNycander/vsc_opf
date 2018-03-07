@@ -21,7 +21,25 @@ if size(list,2) < CONT_PROB
 end
 
 % [contingencies x wind scenarios]
-nScenarios = length(optns.gen.windScenarios);
+nScenarios = size(optns.gen.windScenarios,2);
+
+%% create ext2int mapping for wind farms
+% first apply mapping to all generators
+
+order = mpc.order.gen.e2i;
+% keep values corresponding to curtailable P
+bindum = false(size(order));
+for i=1:length(order)
+    if ismember(order(i),optns.gen.curtailableP)
+        bindum(i) = true;
+    end
+end
+windorder = order(bindum);
+windorder = windorder-min(windorder)+1;
+
+windScenarios = optns.gen.windScenarios(windorder,:);
+%[windScenarios mpc.gen(mpc.gen2(:,PTYPE)==PCUR,PG)]
+
 if isempty(optns.gen.windProbabilities)
     optns.gen.windProbabilities = 1/nScenarios*ones(1,nScenarios);
 end
@@ -95,8 +113,10 @@ for i=1:N
         
         % apply wind scenario
         if list(i,CONT_WIND_SCENARIO)
-            wind(1+(i-1)*nCurtail:i*nCurtail) = optns.gen.windScenarios(:,...
-                list(i,CONT_WIND_SCENARIO) );
+%             wind(1+(i-1)*nCurtail:i*nCurtail) = optns.gen.windScenarios(...
+%                  :,... % Convert to INTERNAL indexing
+%                 list(i,CONT_WIND_SCENARIO) );
+            wind(1+(i-1)*nCurtail:i*nCurtail) = windScenarios(:, list(i,CONT_WIND_SCENARIO) );
         else % use base case values
              wind(1+(i-1)*nCurtail:i*nCurtail) = gen(idxCurtail,PG);
         end
