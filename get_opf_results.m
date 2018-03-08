@@ -69,13 +69,21 @@ Beta = zeros(nCurtail,nc);
 Curtail = zeros(nCurtail,nc);
 Wind = zeros(nCurtail,nc);
 
+flow = nan(nl,2*nc);
 Sflow = nan(nl,2*nc);
+Pflow = nan(nl,2*nc);
+Iflow = nan(nl,2*nc);
+Qflow = nan(nl,2*nc);
 
-Sflow_lam = nan(size(Sflow));
-Pg_lamU = nan(size(Pg));
-Pg_lamL = nan(size(Pg));
-Vm_lamU = nan(size(Vm));
-Vm_lamL = nan(size(Vm));
+flow_lam = nan(size(flow));
+% Pg_lamU = nan(size(Pg));
+% Pg_lamL = nan(size(Pg));
+% Vm_lamU = nan(size(Vm));
+% Vm_lamL = nan(size(Vm));
+
+corrFrom = zeros(length(optns.transferCorridors),nc); 
+corrTo = zeros(length(optns.transferCorridors),nc);
+
 
 countLines = 0;
 countConstrainedLines = 1;
@@ -124,10 +132,10 @@ for i=1:nc
     
     %idxPvar = and(~idxTrip,idxPVar);
     %idxQvar = and(~idxTrip,idxQVar);
-    idxActiveGenerators = cs.activeGenerators(:,i);
-    idxTrippedGenerators = ~cs.activeGenerators(:,i);
-    nActiveGenerators = cs.nActiveGenerators(i);
-    
+%     idxActiveGenerators = cs.activeGenerators(:,i);
+%     idxTrippedGenerators = ~cs.activeGenerators(:,i);
+%     nActiveGenerators = cs.nActiveGenerators(i);
+%     
     if i > 1
         Pg(idxPvar,i) = x(iPg);
         Pg(idxPfix,i) = Pg(idxPfix,1); % store fixed values in all contingencies
@@ -175,36 +183,64 @@ for i=1:nc
     iYt = cs.Yt(countLines+1:countLines+inl,:);
     
     
-    if strcmp(mpopt.opf.flow_lim,'I')
-        If = iYf * V;
-        It = iYt * V;
-        Sflow(active_lines,2*i-1) = If.*conj(If);
-        Sflow(active_lines,2*i) = It.*conj(It);
-    else
-        iSf = V(branch(active_lines, F_BUS)) .* conj(iYf * V);  %% complex power injected at "from" bus (p.u.)
-        iSt = V(branch(active_lines, T_BUS)) .* conj(iYt * V);  %% complex power injected at "to" bus (p.u.)
-        
-        if strcmp(mpopt.opf.flow_lim,'P')
-            %Sf(:,i) = real(iSf)*baseMVA;
-            Sflow(active_lines,2*i-1) = real(iSf)*baseMVA;
-            Sflow(active_lines,2*i) = real(iSt)*baseMVA;
-        else
-            %Sf(:,i) = abs(iSf)*baseMVA;
-            Sflow(active_lines,2*i-1) = (abs(iSf))*baseMVA;
-            Sflow(active_lines,2*i) = (abs(iSt))*baseMVA;
-        end
-        
-    end
+    If = iYf * V;
+    It = iYt * V;
+    Iflow(active_lines,2*i-1) = If.*conj(If);
+    Iflow(active_lines,2*i) = It.*conj(It);
+    
+    iSf = V(branch(active_lines, F_BUS)) .* conj(iYf * V);  %% complex power injected at "from" bus (p.u.)
+    iSt = V(branch(active_lines, T_BUS)) .* conj(iYt * V);  %% complex power injected at "to" bus (p.u.)
+    
+    
+    Pflow(active_lines,2*i-1) = real(iSf)*baseMVA;
+    Pflow(active_lines,2*i) = real(iSt)*baseMVA;
+    
+    Qflow(active_lines,2*i-1) = imag(iSf)*baseMVA;
+    Qflow(active_lines,2*i) = imag(iSt)*baseMVA;
+    
+    Sflow(active_lines,2*i-1) = (abs(iSf))*baseMVA;
+    Sflow(active_lines,2*i) = (abs(iSt))*baseMVA;
+    
+
+
     % lagrange multipliers for line constraints
-    Sflow_lam(cs.constrainedActiveLines(:,i),2*i-1) = Lambda.ineqnonlin(...
+    flow_lam(cs.constrainedActiveLines(:,i),2*i-1) = Lambda.ineqnonlin(...
             countConstrainedLines : countConstrainedLines + cs.nConstrainedActiveLines(i) - 1 );
-    Sflow_lam(cs.constrainedActiveLines(:,i),2*i) = Lambda.ineqnonlin(...
+    flow_lam(cs.constrainedActiveLines(:,i),2*i) = Lambda.ineqnonlin(...
             countConstrainedLines+cs.nConstrainedActiveLines(i) : ...
             countConstrainedLines+2*cs.nConstrainedActiveLines(i) - 1);
+        
+    % sum flows over corridors
+    for j=1:length(optns.transferCorridors)
+        thisCorridor = optns.corridorIdxs{j};
+        direction = sign(thisCorridor);
+        thisCorridor = abs(thisCorridor);
+        
+        for jj=1:length(thisCorridor)
+            if ~isnan(Pflow(thisCorridor(jj),2*i))
+                if direction(jj) > 0
+                    corrFrom(j,i) = corrFrom(j,i) + Pflow(thisCorridor(jj),2*i-1);
+                    corrTo(j,i) = corrTo(j,i) + Pflow(thisCorridor(jj),2*i);
+                else % switch from and to bus for this line
+                    corrFrom(j,i) = corrFrom(j,i) + Pflow(thisCorridor(jj),2*i);
+                    corrTo(j,i) = corrTo(j,i) + Pflow(thisCorridor(jj),2*i-1);
+                end
+            end
+        end
+    end
         
     %% increment counters    
     countConstrainedLines = countConstrainedLines + 2*cs.nConstrainedActiveLines(i);
     countLines = countLines + inl;
+end
+
+% choose which type of flow are used for ratings
+if strcmp(mpopt.opf.flow_lim,'I')
+    flow = Iflow;
+elseif strcmp(mpopt.opf.flow_lim,'P')
+    flow = Pflow;
+else
+    flow = Sflow;
 end
 
 
@@ -254,12 +290,18 @@ VmL = [busExt VmL];
 VaU = [busExt VaU];
 VaL = [busExt VaL];
 
-Sflow = [(1:size(branch,1))' mpc.order.bus.i2e(branch(:,F_BUS)) mpc.order.bus.i2e(branch(:,T_BUS)) branch(:,RATE_A) Sflow];
-Sflow_lam = [(1:size(branch,1))' mpc.order.bus.i2e(branch(:,F_BUS)) mpc.order.bus.i2e(branch(:,T_BUS)) branch(:,RATE_A) Sflow_lam];
+flow = [(1:size(branch,1))' mpc.order.bus.i2e(branch(:,F_BUS)) mpc.order.bus.i2e(branch(:,T_BUS)) branch(:,RATE_A) flow];
+flow_lam = [(1:size(branch,1))' mpc.order.bus.i2e(branch(:,F_BUS)) mpc.order.bus.i2e(branch(:,T_BUS)) branch(:,RATE_A) flow_lam];
+
+Pflow = [(1:size(branch,1))' mpc.order.bus.i2e(branch(:,F_BUS)) mpc.order.bus.i2e(branch(:,T_BUS)) Pflow];
+Qflow = [(1:size(branch,1))' mpc.order.bus.i2e(branch(:,F_BUS)) mpc.order.bus.i2e(branch(:,T_BUS)) Qflow];
+
+corrFrom = [(1:size(corrFrom,1))' corrFrom];
+corrTo = [(1:size(corrTo,1))' corrTo];
 
 % set multipliers below threshold to 0
 thrs = optns.lambdaTolerance;
-Sflow_lam(Sflow_lam < thrs) = 0;
+flow_lam(flow_lam < thrs) = 0;
 PgU(PgU < thrs) = 0;
 PgL(PgL < thrs) = 0;
 QgU(QgU < thrs) = 0;
@@ -282,6 +324,9 @@ varnames_S = {'BRANCH','FROM','TO','RATE_A'};
 varnames_expcurtail = {};
 varnames_wind = {'GEN','BUS'};
 varnames_vmlam = {'BUS'};
+varnames_corridors = {'CORRIDOR'};
+varnames_pflow = {'BRANCH','FROM','TO'};
+varnames_qflow = {'BRANCH','FROM','TO'};
 for i=1:nc
 	if i == 1
 		stringIdx = '';
@@ -302,7 +347,11 @@ for i=1:nc
     varnames_curtail{i+2} = ['PGC' stringIdx];
     varnames_wind{i+2} = ['PWIND' stringIdx];
     varnames_expcurtail{i} = ['EPGC' stringIdx];
-    
+    varnames_corridors{i+1} = ['T' stringIdx];
+    varnames_pflow{2*i+2} = ['PF' stringIdx];
+    varnames_pflow{2*i+3} = ['PT' stringIdx];
+    varnames_qflow{2*i+2} = ['QF' stringIdx];
+    varnames_qflow{2*i+3} = ['QT' stringIdx];
 end
 
 Pg_table = array2table(Pg,...
@@ -311,6 +360,7 @@ Qg_table = array2table(Qg,...
     'VariableNames',varnames_qg);
 Vm_table = array2table(Vm,'VariableNames',varnames_vm);
 Va_table = array2table(Va,'VariableNames',varnames_va);
+
 
 Pg_lamU_table = array2table(PgU,'VariableNames',varnames_pglam);
 Pg_lamL_table = array2table(PgL,'VariableNames',varnames_pglam);
@@ -325,9 +375,13 @@ Beta_table = array2table(Beta,'VariableNames',varnames_beta);
 Curtail_table = array2table(Curtail,'VariableNames',varnames_curtail);
 expCurtail_table = array2table(expCurtail,'VariableNames',varnames_expcurtail);
 Wind_table = array2table(Wind,'VariableNames',varnames_wind);
-S_table = array2table(Sflow,'VariableNames',varnames_S);
-S_lam_table = array2table(Sflow_lam,'VariableNames',varnames_S);
+S_table = array2table(flow,'VariableNames',varnames_S);
+S_lam_table = array2table(flow_lam,'VariableNames',varnames_S);
+transferFrom_table = array2table(corrFrom,'VariableNames',varnames_corridors);
+transferTo_table = array2table(corrTo,'VariableNames',varnames_corridors);
 
+Pflow_table = array2table(Pflow,'VariableNames',varnames_pflow);
+Qflow_table = array2table(Qflow,'VariableNames',varnames_qflow);
 
 %% table with PQ-capability constraints
 pqGens = find(optns.gen.pqFactor);
@@ -352,7 +406,7 @@ PQ_table = [Label_tmp Cap_tmp Ptmp Qtmp];
 
 %% find non-zero multipliers
 str = '';
-vars = {'PgU','PgL','QgU','QgL','VmU','VmL','VaU','VaL','Sflow_lam'};
+vars = {'PgU','PgL','QgU','QgL','VmU','VmL','VaU','VaL','flow_lam'};
 
 for i=1:length(vars)
     switch vars{i} % exclude columns which don't contain multipliers
@@ -372,7 +426,7 @@ for i=1:length(vars)
             exclColIdx = [1];
         case 'VaL'
             exclColIdx = [1];
-        case 'Sflow_lam'
+        case 'flow_lam'
             exclColIdx = 1:4;
     end
         
@@ -404,8 +458,8 @@ for i=1:length(vars)
                     sInfo = sprintf('VA max: Bus %i, Scenario %i',[VaU(row,1) col]);
                 case 'VaL'
                     sInfo = sprintf('VA min: Bus %i, Scenario %i',[VaL(row,1) col]);
-                case 'Sflow_lam'
-                    sInfo = sprintf('Sflow Max: Branch %i, %i-%i, Scenario %i',[Sflow_lam(row,[1:3]) ceil(col/2)]);
+                case 'flow_lam'
+                    sInfo = sprintf('flow Max: Branch %i, %i-%i, Scenario %i',[flow_lam(row,[1:3]) ceil(col/2)]);
                     
             end
             str = [str sprintf('\n') sInfo];
@@ -415,13 +469,32 @@ end
 lamInfo = str;
 
 tab = struct();
-[tab.Pg,tab.Qg,tab.Va,tab.Vm, tab.S, tab.Slam, tab.Curtail] = deal(Pg_table,Qg_table,Va_table,Vm_table, S_table, S_lam_table, Curtail_table);
+[tab.Pg,tab.Qg,tab.Va,tab.Vm, tab.Flow, tab.Flowlam, tab.Curtail] = deal(Pg_table,Qg_table,Va_table,Vm_table, S_table, S_lam_table, Curtail_table);
 [tab.PgUlam,tab.PgLlam,tab.QgUlam,tab.QgLlam,tab.VmUlam,tab.VmLlam,tab.VaUlam,tab.VaLlam, tab.Beta] = ...
     deal(Pg_lamU_table,Pg_lamL_table,Qg_lamU_table,Qg_lamL_table,Vm_lamU_table,Vm_lamL_table,Va_lamU_table,Va_lamL_table, Beta_table);
 [tab.ExpCurtail, tab.Wind, tab.PQ] = deal(expCurtail_table, Wind_table,PQ_table);
-[tab.lamInfo] = deal(lamInfo);
+[tab.lamInfo, tab.transferFrom, tab.transferTo, tab.Pflow, tab.Qflow] = deal(lamInfo, transferFrom_table, transferTo_table, Pflow_table, Qflow_table);
 
 results = mpc;
 [results.bus, results.branch, results.gen, results.gen2, results.bus2, ...
     results.om] = ...
         deal(bus, branch, gen, gen2, bus2, om);
+    
+    
+    % calculate branch flows through corridors
+
+
+% for i=1:size(corrFrom,1)
+%     % find indices of lines for this corridor
+%     thisCorridor = optns.corridorIdxs{i};
+%     
+%     direction = sign(thisCorridor);
+%     thisCorridor = abs(thisCorridor);
+%     
+%     for j=1:nc
+%   
+%         
+%     end
+% end
+    
+

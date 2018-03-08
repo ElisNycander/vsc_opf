@@ -108,28 +108,30 @@ for i=1:N
     
     tol = 1e-6;
     % convert all buses with generators at their Q limits to PQ-buses
-    for j=1:size(impc.bus,1)
-        % find generators at this bus
-        gens = [];
-        for jj=1:size(impc.gen,1)
-            if impc.gen(jj,GEN_BUS) == impc.bus(j,BUS_I)
-                gens = [gens jj];
-            end
-        end
-        % check if generators are at their limits
-        if ~isempty(gens)
-            flag = 1;
-            for jj=1:length(gens)
-                if abs(impc.gen(gens(jj),QG)-impc.gen(gens(jj),QMIN)) > tol && ...
-                   abs(impc.gen(gens(jj),QG)-impc.gen(gens(jj),QMAX)) > tol % then we are not at Q limit
-                    flag = 0;
+    if optns.verifyPQconversion
+        for j=1:size(impc.bus,1)
+            % find generators at this bus
+            gens = [];
+            for jj=1:size(impc.gen,1)
+                if impc.gen(jj,GEN_BUS) == impc.bus(j,BUS_I)
+                    gens = [gens jj];
                 end
             end
-            if flag % then convert bus to PQ
-                impc.bus(j,BUS_TYPE) = 1;
-                %disp(['Converted ' num2str(impc.bus(j,BUS_I)) ' to PQ bus']);
+            % check if generators are at their limits
+            if ~isempty(gens)
+                flag = 1;
+                for jj=1:length(gens)
+                    if abs(impc.gen(gens(jj),QG)-impc.gen(gens(jj),QMIN)) > tol && ...
+                            abs(impc.gen(gens(jj),QG)-impc.gen(gens(jj),QMAX)) > tol % then we are not at Q limit
+                        flag = 0;
+                    end
+                end
+                if flag % then convert bus to PQ
+                    impc.bus(j,BUS_TYPE) = 1;
+                    disp(['Converted ' num2str(impc.bus(j,BUS_I)) ' to PQ bus']);
+                end
             end
-        end 
+        end
     end
     op = mpoption();
     op.verbose = 0;

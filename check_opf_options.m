@@ -1,4 +1,4 @@
-function optns = check_opf_options(optns)
+function optns = check_opf_options(mpc,optns)
 
 
 
@@ -19,4 +19,12 @@ if ~isempty(optns.gen.windProbabilities)
 end
 %optns.mpopt.opf.violation = optns.foptions.TolCon;
 
+
+% find indices of lines in transfer corridors
+optns.corridorIdxs = cell(size(optns.transferCorridors));
+for i=1:length(optns.transferCorridors)
+    thisCorridor = optns.transferCorridors{i};
+    optns.corridorIdxs{i} = line_idx(thisCorridor(:,1), ...
+                               thisCorridor(:,2), mpc);
+end
 

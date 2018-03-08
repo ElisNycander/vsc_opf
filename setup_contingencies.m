@@ -178,6 +178,7 @@ nConstrainedActiveLines = sum(constrainedActiveLines,1);
 nActiveLines = sum(activeLines,1);
 nActiveGenerators = sum(activeGenerators,1);
 
+
 c = struct(); % create struct
 [c.list, c.N, c.Ybus, c.Yf, c.Yt, c.load, c.activeLines, c.nActiveLines, c.activeGenerators, c.nActiveGenerators, c.constrainedActiveLines, c.nConstrainedActiveLines, c.wind]...
 	= deal(list,N,Ybus,Yf,Yt,load, activeLines, nActiveLines, activeGenerators, nActiveGenerators, constrainedActiveLines, nConstrainedActiveLines,wind); % assign elements to struct

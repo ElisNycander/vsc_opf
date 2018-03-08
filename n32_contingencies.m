@@ -19,11 +19,11 @@ c = [
 
 %% N32 proposed contingencies 
      2     16    1       0   % trip generator 16, nr 2 4047
-    2     19    1       0   % trip generatir 19, nr 1 4062
+    2     19    1       0   % trip generator 19, nr 1 4062
     1     21    1       0   % trip line 21, 4011-4021
  
 % extra contingencies
-     1     31    1      0    % trip line 31, 4031-4041
+%     1     31    1      0    % trip line 31, 4031-4041
 
 % 	2     2    1       0   % trip generator 1
 %	2     3    1       0   % trip generator 1

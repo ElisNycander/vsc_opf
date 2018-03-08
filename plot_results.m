@@ -123,8 +123,23 @@ xlabel('Contingency scenario');
 ylabel('Curtailment (%)');
 title('Total curtailment')
 
-figureArray = [F1 F2 F3 F4 F5 F6 F7];
-figNames = {'Pg','Qg','WindPenetration','CutailMW','CurtailFraction','CurtailTot','CurtailTotPc'};
+
+%% Plot transfers in corridors
+
+transfers = table2array( table.transferFrom(:,setdiff( table.transferFrom.Properties.VariableNames,{'CORRIDOR'} )) );
+F8 = figure;
+PH8 = bar(1:N, transfers.');
+transLables = {};
+for i=1:size(transfers,1)
+    transLables{i} = ['Corridor ' num2str(i)];
+end
+legend(transLables);
+xlabel('Contingency scenario');
+ylabel('Active power transfer (MW)');
+title('Transfer through corridors');
+
+figureArray = [F1 F2 F3 F4 F5 F6 F7 F8];
+figNames = {'Pg','Qg','WindPenetration','CutailMW','CurtailFraction','CurtailTot','CurtailTotPc','Transfers'};
 if optns.saveFigures
    for i=1:length(figureArray)
        thisFigureName = [optns.caseName '_' figNames{i}];
