@@ -24,7 +24,7 @@ optns.useInitialPF = 1; % initial power flow must be solvable
 
 optns.useOlaussonScenarios = 1; % Scenario from Olausson (2015)
 optns.setPenetration = 1; % Manually set penetration ratio of system for base case to this value
-optns.penetrationLevel = 0.9;
+optns.penetrationLevel = 0.5;
 optns.replaceGeneration = 1; % replace wind with synchronous generation in base case
 optns.generationReplacementTol = 5; % in MW
 optns.windScenario = 'C1'; % 
@@ -45,7 +45,7 @@ optns.gen.useWindScenarios = 1;
 optns.transferCorridors = {
     [4011 4071;4012 4071], [4031 4041;4032 4044;4032 4042;4021 4042]
 }; % transfer over these lines will be summed (active power flow P)   
-
+optns.externalBuses = [4071 4072]; % used when computing wind pentration in plot_results
 %%
 mpc = n32_define_areas(mpc);
 
@@ -333,7 +333,7 @@ mpc.gen(find(mpc.gen(:,GEN_BUS)==4041),PMAX) = 0;
 
 %% RUN INITIAL POWER FLOW FOR BASE CASE
 % do pfs quietly
-optns.mpopt.out.all = 1;
+optns.mpopt.out.all = 0;
 optns.mpopt.verbose = 4;
 optns.mpopt.pf.enforce_q_lims = 0;
 mpci = runpf(mpc,optns.mpopt);

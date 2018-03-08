@@ -64,9 +64,17 @@ title('Reactive power')
 MaximizeFigureWindow();
 
 %% Wind Penetration
+internalGens = false(size(table.Pg,1));
+for i=1:length(internalGens)
+    if ~ismember(table2array(table.Pg(i,'BUS')),optns.externalBuses)
+        internalGens(i) = true;
+    end
+end
+
+
 PgMat(isnan(PgMat)) = 0;
 windPG = sum(PgMat(optns.gen.curtailableP,:),1);
-totPG = sum(PgMat(),1);
+totPG = sum(PgMat(internalGens,:),1);
 penetration = windPG./totPG;
 
 F3 = figure;
