@@ -30,8 +30,8 @@ optns.generationReplacementTol = 5; % in MW
 optns.windScenario = 'C1'; % 
 slackFactor = 0.9; % scale down generation, to get positive production at slack bus in base case
 
-optns.gen.optimizeBaseP = 0; 
-optns.gen.optimizeBaseWind = 0; % include base case Pwind as optimization variables (only when optimize baseP) - NOT IMPLEMENTED
+optns.gen.optimizeBaseP = 1; 
+optns.gen.fixBaseWind = 1; % fix curtailable P for base case (only when optimizBbaseP) - NOT IMPLEMENTED
 optns.gen.usePQConstraints = 0;
 
 optns.saveFigures = 1;

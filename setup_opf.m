@@ -96,11 +96,11 @@ om = opf_model(mpc);
           om = add_vars(om, 'Va', nb, Va, Val, Vau);
           om = add_vars(om, 'Vm', nb, Vm, bus(:, VMIN), bus(:, VMAX));
           if optns.gen.optimizeBaseP % include active power for base case as optimization variables
-            %  if optns.gen.optimizeBaseWind
-             %     om = add_vars(om, 'Pg', ng-nCurtail, Pg(~idxCurtail), Pmin(~idxCurtail), Pmax(idxCurtail));
-             % else
+             if optns.gen.fixBaseWind
+                 om = add_vars(om, 'Pg', ng-nCurtail, Pg(~idxCurtail), Pmin(~idxCurtail), Pmax(~idxCurtail));
+             else
                   om = add_vars(om, 'Pg', ng, Pg, Pmin, Pmax);
-             % end
+             end
           end
           om = add_vars(om, 'Qg', ng, Qg, Qmin, Qmax);
           
@@ -205,6 +205,7 @@ om = opf_model(mpc);
           gIdx = 1;
           PVarCount = 1;
           PCurCount = 1;
+          PNotCurCount = 1; % keep track of idx in iPBase for current generator
           for j=1:ng
               if idxActive(j)
                   if idxPQFactor(j) % add constraint for generator
@@ -232,7 +233,8 @@ om = opf_model(mpc);
                           % only constraint if P base are optimization
                           % variables
                           if optns.gen.optimizeBaseP
-                              pidx = iPBase(j);
+                              
+                              pidx = iPBase(PNotCurCount);
                               
                               A(Aidx,qidx) = 1;
                               A(Aidx,pidx) = -gen2(j,PQ_FACTOR);
@@ -272,6 +274,13 @@ om = opf_model(mpc);
                   end
 
                   gIdx = gIdx + 1; % increment counter for QG variables
+              end
+              if optns.gen.fixBaseWind % curtailable generators not variable in base case
+                  if ~idxCurtail(j) % then generator is present in PBase
+                      PNotCurCount = PNotCurCount + 1;
+                  end
+              else % all generators present, -> PNotCurCount is same as j
+                  PNotCurCount = PNotCurCount + 1;
               end
           end
           

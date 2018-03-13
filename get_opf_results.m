@@ -36,8 +36,10 @@ nl = size(branch,1);
 
 [~,Yf,Yt] = makeYbus(baseMVA,bus,branch);
 
-idxCurtail = find(gen2(:,PTYPE)==PCUR);
-nCurtail = length(idxCurtail);
+numIdxCurtail = find(gen2(:,PTYPE)==PCUR); % numbered index
+idxNotCurtail = find(gen2(:,PTYPE)~=PCUR);
+%bolIdxCurtail = gen2(:,PTYPE) == PCUR;
+nCurtail = length(numIdxCurtail);
 %% PRINT GENERATION
 
 % collect injections in matrix:
@@ -88,11 +90,15 @@ corrTo = zeros(length(optns.transferCorridors),nc);
 countLines = 0;
 countConstrainedLines = 1;
 
-if isfield(vv.i1,'Pg')
-    includePgBase = 1;
-else
-    includePgBase = 0;
+includePgBase = isfield(vv.i1,'Pg');
+if includePgBase
+    fixBaseWind = vv.N.Pg < ng;
 end
+% if isfield(vv.i1,'Pg')
+%     includePgBase = 1;
+% else
+%     includePgBase = 0;
+% end
 for i=1:nc
     % indices 
     if i == 1
@@ -153,9 +159,20 @@ for i=1:nc
         
     else % base case
         if includePgBase
-            Pg(:,i) = x(iPg);
-            PgL(:,i) = Lambda.lower(iPg);
-            PgU(:,i) = Lambda.upper(iPg);
+            if ~fixBaseWind % all Pg are optimization variables
+                Pg(:,i) = x(iPg);
+                PgL(:,i) = Lambda.lower(iPg);
+                PgU(:,i) = Lambda.upper(iPg);
+            else % only non-curtailable Pg are optimization variables
+                Pg(idxNotCurtail,i) = x(iPg);
+                PgL(idxNotCurtail,i) = Lambda.lower(iPg);
+                PgU(idxNotCurtail,i) = Lambda.upper(iPg);
+                
+                % get pre-set Pg values for curtailable generators
+                Pg(numIdxCurtail,i) = mpc.gen(numIdxCurtail,PG)/mpc.baseMVA;
+                PgL(numIdxCurtail,i) = NaN;
+                PgU(numIdxCurtail,i) = NaN;
+            end
         else
             Pg(:,i) = mpc.gen(:,PG)/mpc.baseMVA; % get pre-set Pg values
         end
@@ -258,11 +275,11 @@ QgU = [genExt busExt QgU];
 QgL = [genExt busExt QgL];
 
 %Beta = [mpc.order.gen.i2e(idxCurtail) mpc.order.bus.i2e(mpc.gen(idxCurtail,GEN_BUS)) Beta];
-Beta = [mpc.order.gen.e2i(idxCurtail) mpc.order.bus.i2e(mpc.gen(idxCurtail,GEN_BUS)) Beta];
+Beta = [mpc.order.gen.e2i(numIdxCurtail) mpc.order.bus.i2e(mpc.gen(numIdxCurtail,GEN_BUS)) Beta];
 expCurtail = [cs.probabilities(1:end)'; sum(Curtail,1); ...
               cs.probabilities(1:end)'.*sum(Curtail,1)];
-Curtail = [mpc.order.gen.e2i(idxCurtail) mpc.order.bus.i2e(mpc.gen(idxCurtail,GEN_BUS)) Curtail];
-Wind = [mpc.order.gen.e2i(idxCurtail) mpc.order.bus.i2e(mpc.gen(idxCurtail,GEN_BUS)) Wind];
+Curtail = [mpc.order.gen.e2i(numIdxCurtail) mpc.order.bus.i2e(mpc.gen(numIdxCurtail,GEN_BUS)) Curtail];
+Wind = [mpc.order.gen.e2i(numIdxCurtail) mpc.order.bus.i2e(mpc.gen(numIdxCurtail,GEN_BUS)) Wind];
 
 
 s = mpc.order.gen.i2e;
@@ -274,7 +291,7 @@ PgL = PgL(s,:);
 QgU = QgU(s,:);
 QgL = QgL(s,:);
 
-[~,sortIdx] = sort(mpc.order.gen.e2i(idxCurtail));
+[~,sortIdx] = sort(mpc.order.gen.e2i(numIdxCurtail));
 Beta = Beta(sortIdx,:);
 Curtail = Curtail(sortIdx,:);
 Wind = Wind(sortIdx,:);

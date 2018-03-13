@@ -18,26 +18,58 @@ optns.verify = 1; % verify_solutions
 
 optns.lambdaTolerance = 1e-4; % round smaller lambda to 0 for tables
 
+
+
+optns.hessian = 0;
+optns.verify = 1; % verify_solutions
+optns.verifyPQconversion = 0; % convert PV buses with generators at Q-limits to PQ in power flow
+
+optns.lambdaTolerance = 1e-4; % round smaller lambda to 0 for tables
+
+%optns.useInitialPF = 1; % initial power flow must be solvable
+
+%optns.useOlaussonScenarios = 1; % Scenario from Olausson (2015)
+%optns.setPenetration = 1; % Manually set penetration ratio of system for base case to this value
+%optns.penetrationLevel = 0.5;
+%optns.replaceGeneration = 1; % replace wind with synchronous generation in base case
+%optns.generationReplacementTol = 5; % in MW
+%optns.windScenario = 'C1'; % 
+%slackFactor = 0.9; % scale down generation, to get positive production at slack bus in base case
+
+optns.gen.optimizeBaseP = 1; 
+optns.gen.fixBaseWind = 0; % fix curtailable P for base case (only when optimizBbaseP) - NOT IMPLEMENTED
+optns.gen.usePQConstraints = 0;
+
+optns.transferCorridors = {
+    [1 4;3 6;2 8]
+};
+optns.externalBuses = [
+];
+
+optns.saveFigures = 1;
+optns.saveData = 1;
+optns.caseName = 'case9_default';
+
 %% generator options
 % extra generators           
 %	bus	Pg	Qg	Qmax	Qmin	Vg	mBase	status	Pmax	Pmin	           
 optns.gen.extra = [
-     4   50   0    50       -50       1   100     1       inf     0
+     4   50 0   50       -50       1   100     1       inf     0
      6   50 0   50       -50       1   100     1       inf     0
      8   50 0   50       -50       1   100     1       inf     0
 ];
+
+optns.gen.extra(:,[QMIN QMAX]) = 0;
 
 %% the active power of generators can either be:
 % 1 Variable - can vary freely for all contingencies
 % 2 Fixed - set by base case power flow
 % 3 Curtailable - can be curtailed relative to base case in contingencies
 % Note: Variable is default
-optns.gen.fixedP = [2];
-optns.gen.curtailableP = [4];
+optns.gen.fixedP = [1];
+optns.gen.curtailableP = [4 5 6];
 optns.gen.variableP = [];
 % include base case P-values in optimization or not, may take given values as "market outcome"
-optns.gen.optimizeBaseP = 0; 
-optns.gen.usePQConstraints = 1;
 
 %optns.gen.maxPg = [1:6]; % generators for which to max production (must be fixed)
 %optns.gen.maxPgLim = [3000];
@@ -91,7 +123,7 @@ foptions.TolX = 1e-10;
 foptions.MaxIter = 5000;
 
 %% CHECK OPTIONS
-optns = check_opf_options(optns);
+optns = check_opf_options(mpc,optns);
 
 %% SETUP MATPOWER CASE
 mpc = setup_mpc(mpc,optns);
@@ -157,11 +189,11 @@ fprintf(['Time: %0.3f s'],et)
 fprintf(['\nObjective function: %0.1f'],f*mpc.baseMVA);
 %[x0 x Lambda.lower Lambda.upper LB UB]
 
-[results,table] = get_opf_results(om,x,Lambda,optns);
+[results,restab] = get_opf_results(om,x,Lambda,optns);
 [results.et, results.f, results.success] = deal(et,f,success);
 
 if optns.verify == 1
-    success = verify_solutions(table,om,optns);
+    success = verify_solutions(restab,om,optns);
     %fprintf(['\nSolutions verified: %i'],success);
     fprintf(['\nSolutions verified: %i'],sum(success)==mpc.contingencies.N);
 end
@@ -171,21 +203,21 @@ end
 % vv = get_idx(om);
 % tab.Qg
 % 180/pi*x(vv.i1.Va1:vv.iN.Va1)
- table.Vm
- table.Pg
-% table.Beta
-% table.Curtail
-% table.ExpCurtail
- table.Qg
-% table.S
-% table.Slam
-%table.lamInfo
-table.PQ
+ restab.Vm
+ restab.Pg
+% restab.Beta
+% restab.Curtail
+% restab.ExpCurtail
+ restab.Qg
+% restab.S
+% restab.Slam
+%restab.lamInfo
+restab.PQ
 
 success
 
 [h,g] = g_fcn(x);
 g_dev = sum(abs(g))
-h_dev = min(abs(h))
+h_dev = min(h)
 
-plot_results(table,optns);
+plot_results(restab,optns);

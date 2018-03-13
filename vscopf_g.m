@@ -80,8 +80,11 @@ else
 end
 
 % curtailable generators
-idxPCurtail = find(gen2(:,PTYPE)==PCUR);
-nPCurtail = length(idxPCurtail);
+% idxPCurtail = find(gen2(:,PTYPE)==PCUR);
+% nPCurtail = length(idxPCurtail);
+idxPCurtail = gen2(:,PTYPE)==PCUR;
+nPCurtail = sum(idxPCurtail);
+idxPNotCurtail = not(idxPCurtail);
 
 %find buses in load increas area
 varload_idx = find(bus2(:,LOAD_INCREASE_AREA));
@@ -90,12 +93,17 @@ busVarN = length(varload_idx);
 idxPVar = gen2(:,PTYPE)== PVAR;
 idxNotPvar = find(~idxPVar);
 nNotPvar = length(idxNotPvar);
-%idxPfix = find(gen2(:,PTYPE)==PVAR);
-%nPfix = length(idxPfix);
+
+idxBolPFix = gen2(:,PTYPE) == PFIX;
+idxPfix = find(idxBolPFix);
+nPfix = length(idxPfix);
 
 % check if base case Pg are included as optimization variables
 includePgBase = isfield(vv.i1,'Pg');
-
+if includePgBase
+    % check if curtailable generators are included
+    fixBaseWind = (vv.N.Pg < ng); 
+end
 
 nzcounter = 0; % count number of non-zero entries to make sure entries are not overwritten
 ycounter = 0;
@@ -159,11 +167,19 @@ for i=1:nc     % loop over all cases, including base case
 	idxVariableGenerators = and(cs.activeGenerators(:,i),idxPVar);
     idxActiveGenerators = cs.activeGenerators(:,i);
 	idxTrippedGenerators = ~cs.activeGenerators(:,i);
+    
+    idxBolPFixActive = and(cs.activeGenerators(:,i),idxBolPFix);
+    %idxPFixActive = find(idxBolPFixActive);
+    %nPFixActive = length(idxPFixActive);
 	
     %% enter current values
     if i == 1 % base case
         if includePgBase
-            gen(:, PG) = Pg * baseMVA;  %% active generation in MW
+            if ~fixBaseWind % all generators are optimization variables
+                gen(:, PG) = Pg * baseMVA;  %% active generation in MW
+            else % only non-curtailable generators are optimization variables
+                gen(idxPNotCurtail, PG) = Pg*baseMVA; % NOTE: idxPCurtail must be boolean
+            end
         end
 		gen(:, QG) = Qg * baseMVA;
     else
@@ -233,9 +249,14 @@ for i=1:nc     % loop over all cases, including base case
         %% dPi/dPg
         if i == 1 % base case
             if includePgBase % include Pg for base case as optimization variables (all Pg)
+                
                 nPg = vv.N.(['Pg' sidx]);
                 neg_CgP = zeros(nb, nPg);
-                neg_CgP(sub2ind(size(neg_CgP),gen(:,GEN_BUS)',1:nPg)) = -1;
+                if ~fixBaseWind
+                    neg_CgP(sub2ind(size(neg_CgP),gen(:,GEN_BUS)',1:nPg)) = -1;
+                else
+                    neg_CgP(sub2ind(size(neg_CgP),gen(idxPNotCurtail,GEN_BUS)',1:nPg)) = -1;
+                end
             else % base case Pg taken as parameters
                 nPg = 0;
                 neg_CgP = zeros(nb,nPg);
@@ -265,7 +286,16 @@ for i=1:nc     % loop over all cases, including base case
             ];
         
         if nPg < ng && includePgBase %% dPi/dPg(base case) for contingency cases
-            dg(sub2ind(size(dg),gen(idxNotPvar,GEN_BUS)+2*nb*(i-1),idxNotPvar+vv.i1.Pg-1)) = - ones(1, nNotPvar);
+            if ~fixBaseWind % derivative of active power mismatch wrt (PCurtail and PFix)
+               idxNotPvarActive = find(and(idxActiveGenerators,~idxPVar));
+               nNotPvarActive = length(idxNotPvarActive);
+               dg(sub2ind(size(dg),gen(idxNotPvarActive,GEN_BUS)+2*nb*(i-1),idxNotPvarActive+vv.i1.Pg-1)) = - ones(1, nNotPvarActive);
+%                dg(sub2ind(size(dg),gen(idxNotPvar,GEN_BUS)+2*nb*(i-1),idxNotPvar+vv.i1.Pg-1)) = - ones(1, nNotPvar);
+            else % derivative of P mismatch wrt Pfix
+                idxPFixActive = find(and(idxActiveGenerators,idxBolPFix));
+                nPFixActive = length(idxPFixActive);
+                dg(sub2ind(size(dg),gen(idxPFixActive,GEN_BUS)+2*nb*(i-1),idxPFixActive+vv.i1.Pg-1)) = - ones(1, nPFixActive);
+            end
         end
 
        
