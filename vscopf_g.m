@@ -59,8 +59,7 @@ nc = cs.N; % includes base case
 
 
     %% find constrained lines
-%idxConstrainedLines = branch(:,RATE_A) ~= 0;
-%nConstrainedLines = sum(idxConstrainedLines);           %% number of constrained lines
+        %% number of constrained lines
 idxConstrainedLines = cs.constrainedActiveLines(:,1);
 nConstrainedLines = cs.nConstrainedActiveLines(1);
 
@@ -79,24 +78,20 @@ else
     dh = [];
 end
 
-% curtailable generators
-% idxPCurtail = find(gen2(:,PTYPE)==PCUR);
-% nPCurtail = length(idxPCurtail);
-idxPCurtail = gen2(:,PTYPE)==PCUR;
-nPCurtail = sum(idxPCurtail);
-idxPNotCurtail = not(idxPCurtail);
+%% fixed indices
+bolIdxPCur = gen2(:,PTYPE)==PCUR;
+nPCurtail = sum(bolIdxPCur);
+bolIdxPNotCur = not(bolIdxPCur);
 
 %find buses in load increas area
 varload_idx = find(bus2(:,LOAD_INCREASE_AREA));
 busVarN = length(varload_idx);
 
-idxPVar = gen2(:,PTYPE)== PVAR;
-idxNotPvar = find(~idxPVar);
-nNotPvar = length(idxNotPvar);
+bolIdxPVar = gen2(:,PTYPE)== PVAR;
 
-idxBolPFix = gen2(:,PTYPE) == PFIX;
-idxPfix = find(idxBolPFix);
-nPfix = length(idxPfix);
+bolIdxPFix = gen2(:,PTYPE) == PFIX;
+
+
 
 % check if base case Pg are included as optimization variables
 includePgBase = isfield(vv.i1,'Pg');
@@ -111,13 +106,36 @@ hcounter = 0; % counter for rows in h, dh
 gcounter = 0;
 for i=1:nc     % loop over all cases, including base case
     
-    iWind = cs.wind(1+(i-1)*nPCurtail:i*nPCurtail);
-
-    % use admittance matrix for this contingency
+    if i == 1 % base case
+        sidx = '';
+    else % contingency
+        sidx = num2str(i);
+    end
     
+    %% Variable indices
+    
+    bolIdxPVarActive = and(cs.activeGenerators(:,i),bolIdxPVar);
+    bolIdxActiveGen = cs.activeGenerators(:,i);
+    bolIdxTrippedGen = ~cs.activeGenerators(:,i);
+    
+    %idxBolPFixActive = and(cs.activeGenerators(:,i),bolIdxPFix);
+    nActiveLines = cs.nActiveLines(i);
+    
+    if ~fixBaseWind 
+        idxPBaseOpt = find(and(bolIdxActiveGen,~bolIdxPVar));
+    else
+        idxPBaseOpt = find(and(bolIdxActiveGen,bolIdxPFix));
+    end
+    nPBaseOpt = length(idxPBaseOpt);
+    
+    %% unpack wind scenario
+    iWind = cs.wind(1+(i-1)*nPCurtail:i*nPCurtail);
+    
+    % use admittance matrix for this contingency
+    %% un-pack admittance matrix
     % NOTE: Admittance matrices for different contingencies stack in a
     % single column
-    nActiveLines = cs.nActiveLines(i);
+
     iYbus = Ybus(1+(i-1)*nb:i*nb,:);
     iYf = Yf(ycounter+1:ycounter+nActiveLines,:);
     iYt = Yt(ycounter+1:ycounter+nActiveLines,:);
@@ -130,11 +148,7 @@ for i=1:nc     % loop over all cases, including base case
     iiYt = iYt(idxYbranch,:);
     % Note: Yf and Yt contain only active lines for a given contingency
     % branch contains all lines
-    if i == 1 % base case
-        sidx = '';
-    else % contingency
-        sidx = num2str(i);
-    end
+
 	
 	%% index ranges
     
@@ -164,33 +178,25 @@ for i=1:nc     % loop over all cases, including base case
     
 	bus(varload_idx,[PD QD]) = load(1+(i-1)*busVarN:i*busVarN,:);
 	
-	idxVariableGenerators = and(cs.activeGenerators(:,i),idxPVar);
-    idxActiveGenerators = cs.activeGenerators(:,i);
-	idxTrippedGenerators = ~cs.activeGenerators(:,i);
-    
-    idxBolPFixActive = and(cs.activeGenerators(:,i),idxBolPFix);
-    %idxPFixActive = find(idxBolPFixActive);
-    %nPFixActive = length(idxPFixActive);
-	
     %% enter current values
     if i == 1 % base case
         if includePgBase
             if ~fixBaseWind % all generators are optimization variables
                 gen(:, PG) = Pg * baseMVA;  %% active generation in MW
             else % only non-curtailable generators are optimization variables
-                gen(idxPNotCurtail, PG) = Pg*baseMVA; % NOTE: idxPCurtail must be boolean
+                gen(bolIdxPNotCur, PG) = Pg*baseMVA; % NOTE: idxPCurtail must be boolean
             end
         end
 		gen(:, QG) = Qg * baseMVA;
     else
         %gen(pvar_idx,PG) = Pg * baseMVA;
-		trippedGeneration = gen(idxTrippedGenerators,[PG QG]); % store values for tripped generator
-		gen(idxTrippedGenerators,[PG QG]) = 0; % set tripped generator to zero
+		trippedGeneration = gen(bolIdxTrippedGen,[PG QG]); % store values for tripped generator
+		gen(bolIdxTrippedGen,[PG QG]) = 0; % set tripped generator to zero
 		
-		gen(idxVariableGenerators,PG) = Pg*baseMVA;
-		gen(idxActiveGenerators,QG) = Qg*baseMVA;
+		gen(bolIdxPVarActive,PG) = Pg*baseMVA;
+		gen(bolIdxActiveGen,QG) = Qg*baseMVA;
         % enter wind scenarios
-        gen(idxPCurtail,PG) = iWind.*(1-x(iBeta));
+        gen(bolIdxPCur,PG) = iWind.*(1-x(iBeta));
     end
 	
     Sbus = makeSbus(baseMVA, bus, gen, mpopt, Vm);  %% net injected power in p.u.
@@ -255,7 +261,7 @@ for i=1:nc     % loop over all cases, including base case
                 if ~fixBaseWind
                     neg_CgP(sub2ind(size(neg_CgP),gen(:,GEN_BUS)',1:nPg)) = -1;
                 else
-                    neg_CgP(sub2ind(size(neg_CgP),gen(idxPNotCurtail,GEN_BUS)',1:nPg)) = -1;
+                    neg_CgP(sub2ind(size(neg_CgP),gen(bolIdxPNotCur,GEN_BUS)',1:nPg)) = -1;
                 end
             else % base case Pg taken as parameters
                 nPg = 0;
@@ -267,16 +273,16 @@ for i=1:nc     % loop over all cases, including base case
         else % contingency cases, must always be one Pg which can be changed
             nPg = vv.N.(['Pg' sidx]);
             neg_CgP = zeros(nb, nPg);
-            neg_CgP(sub2ind(size(neg_CgP),gen(idxVariableGenerators,GEN_BUS)',1:nPg)) = -1;
+            neg_CgP(sub2ind(size(neg_CgP),gen(bolIdxPVarActive,GEN_BUS)',1:nPg)) = -1;
             %neg_CgP = sparse(gen(pvar_idx, GEN_BUS), 1:PgcN, -1, nb, PgcN);
             dPdBeta = zeros(nb,nPCurtail);
-            dPdBeta( sub2ind( size(dPdBeta),gen(idxPCurtail,GEN_BUS)',1:size(dPdBeta,2) ) ) = iWind/baseMVA;
+            dPdBeta( sub2ind( size(dPdBeta),gen(bolIdxPCur,GEN_BUS)',1:size(dPdBeta,2) ) ) = iWind/baseMVA;
             %dQdBeta = zeros(nb,nPCurtail)
         end
         %% dQi/dQg
         nQg = vv.N.(['Qg' sidx]);
         neg_CgQ = zeros(nb, nQg);
-        neg_CgQ(sub2ind([nb nQg],gen(idxActiveGenerators,GEN_BUS)',1:nQg)) = -1;
+        neg_CgQ(sub2ind([nb nQg],gen(bolIdxActiveGen,GEN_BUS)',1:nQg)) = -1;
         %neg_CgQ = sparse(gen(idxActiveGenerators,GEN_BUS), 1:ng,-1,nb,ng); %% Qbus w.r.t. Qg
         dQdBeta = zeros(nb,length(iBeta));
         %% construct Jacobian of equality (power flow) constraints and transpose it
@@ -286,16 +292,7 @@ for i=1:nc     % loop over all cases, including base case
             ];
         
         if nPg < ng && includePgBase %% dPi/dPg(base case) for contingency cases
-            if ~fixBaseWind % derivative of active power mismatch wrt (PCurtail and PFix)
-               idxNotPvarActive = find(and(idxActiveGenerators,~idxPVar));
-               nNotPvarActive = length(idxNotPvarActive);
-               dg(sub2ind(size(dg),gen(idxNotPvarActive,GEN_BUS)+2*nb*(i-1),idxNotPvarActive+vv.i1.Pg-1)) = - ones(1, nNotPvarActive);
-%                dg(sub2ind(size(dg),gen(idxNotPvar,GEN_BUS)+2*nb*(i-1),idxNotPvar+vv.i1.Pg-1)) = - ones(1, nNotPvar);
-            else % derivative of P mismatch wrt Pfix
-                idxPFixActive = find(and(idxActiveGenerators,idxBolPFix));
-                nPFixActive = length(idxPFixActive);
-                dg(sub2ind(size(dg),gen(idxPFixActive,GEN_BUS)+2*nb*(i-1),idxPFixActive+vv.i1.Pg-1)) = - ones(1, nPFixActive);
-            end
+            dg(sub2ind(size(dg),gen(idxPBaseOpt,GEN_BUS)+2*nb*(i-1),idxPBaseOpt+vv.i1.Pg-1)) = - ones(1, nPBaseOpt);
         end
 
        
@@ -343,7 +340,7 @@ for i=1:nc     % loop over all cases, including base case
 	
 	% restore tripped generation
 	if i > 1
-		gen(idxTrippedGenerators,[PG QG]) = trippedGeneration;
+		gen(bolIdxTrippedGen,[PG QG]) = trippedGeneration;
 	end
 	
 	% increase counters
