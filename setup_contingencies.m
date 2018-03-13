@@ -37,7 +37,13 @@ end
 windorder = order(bindum);
 windorder = windorder-min(windorder)+1;
 
-windScenarios = optns.gen.windScenarios(windorder,:);
+
+if size(optns.gen.windScenarios,1) > 1
+    windScenarios = optns.gen.windScenarios(windorder,:);
+else
+    % same production for all wind farms
+    windScenarios = optns.gen.windScenarios;
+end
 %[windScenarios mpc.gen(mpc.gen2(:,PTYPE)==PCUR,PG)]
 
 if isempty(optns.gen.windProbabilities)
@@ -141,7 +147,8 @@ for i=1:N
                 end
                 
             case TRIP_GEN
-				genidx = list(i,CONT_IDX);
+                % note: list uses external indexing
+				genidx = mpc.order.gen.i2e(list(i,CONT_IDX));
 				activeGenerators(genidx,i) = false;
 				
 			
