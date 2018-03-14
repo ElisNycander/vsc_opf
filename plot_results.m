@@ -146,8 +146,67 @@ xlabel('Contingency scenario');
 ylabel('Active power transfer (MW)');
 title('Transfer through corridors');
 
-figureArray = [F1 F2 F3 F4 F5 F6 F7 F8];
-figNames = {'Pg','Qg','WindPenetration','CutailMW','CurtailFraction','CurtailTot','CurtailTotPc','Transfers'};
+
+%% Voltages
+
+F9 = figure;
+VmMat = table2array(table.Vm(:, setdiff(table.Vm.Properties.VariableNames,{'BUS','MIN','MAX'})));
+PH9 = bar(1:N,VmMat');
+
+% categories: 
+% No generation, Wind, Conventional, Wind+Conventional: 1,2,3,4
+catColors = [
+    0 0 0; % black
+    0 1 0; % green
+    1 0 0; % red
+    1 1 0 % yellow
+];
+vmLabels = {};
+for i=1:size(VmMat,1)
+    vmLabels{i} = ['Bus ' num2str( table2array( table.Vm(i,'BUS') ))];
+end
+legend(vmLabels);
+
+% set borders to mark categories
+for i=1:size(VmMat,1)
+    bus = table2array( table.Vm(i,'BUS') );
+    % find generators at this bus
+    type = 1; 
+    for ii=1:size(table.Pg,1)
+            if table2array(table.Pg(ii,'BUS')) == bus
+                % check the type of this generator
+                if ismember(ii,optns.gen.curtailableP) % wind
+                    if type == 1
+                        type = 2;
+                    elseif type == 3
+                        type = 4;
+                    end
+                else % conventional
+                    if type == 1
+                        type = 3;
+                    elseif type == 2
+                        type = 4;
+                    end
+                end
+            end
+    end
+    %PH9(i).EdgeColor = catColors(type,:);
+    PH9(i).FaceColor = catColors(type,:);
+end
+
+grid on;
+xlabel('Contingency scenario');
+ylabel('V (pu)')
+
+title('Voltage')
+ylim([0.85 1.15]);
+
+MaximizeFigureWindow();
+
+
+%% save figures
+figureArray = [F1 F2 F3 F4 F5 F6 F7 F8 F9];
+figNames = {'Pg','Qg','WindPenetration','CutailMW','CurtailFraction','CurtailTot','CurtailTotPc','Transfers','Vm'};
 if optns.saveFigures
    for i=1:length(figureArray)
        thisFigureName = [optns.caseName '_' figNames{i}];
