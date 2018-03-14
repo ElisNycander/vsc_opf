@@ -3,6 +3,8 @@ clear;
 define_constants;
 vscopf_define_constants;
 
+%penetration = 0.5:0.5:0.9
+
 %% OPTIONS
 optns = struct();
 
@@ -24,17 +26,22 @@ optns.useInitialPF = 1; % initial power flow must be solvable
 
 optns.useOlaussonScenarios = 1; % Scenario from Olausson (2015)
 optns.setPenetration = 1; % Manually set penetration ratio of system for base case to this value
-optns.penetrationLevel = 0.5;
+optns.penetrationLevel = 0.6;
 optns.replaceGeneration = 1; % replace wind with synchronous generation in base case
 optns.generationReplacementTol = 5; % in MW
-optns.windScenario = 'C1'; % 
+optns.windScenario = 'C2'; % 
+optns.lowLoadScenario = 1; % reduce load for low-load scenario
+
+highLoad = 25e3; % high load (in MW)
+lowLoad = 10e3; % low load (in MW)
+
 slackFactor = 0.9; % scale down generation, to get positive production at slack bus in base case
 
 optns.gen.optimizeBaseP = 1; 
 optns.gen.fixBaseWind = 1; % fix curtailable P for base case (only when optimizBbaseP) - NOT IMPLEMENTED
-optns.gen.usePQConstraints = 0;
+optns.gen.usePQConstraints = 1;
 
-optns.saveFigures = 1;
+optns.saveFigures = 0;
 optns.saveData = 1;
 optns.caseName = 'case_default';
 
@@ -111,10 +118,15 @@ optns.gen.extra = [
 %     4062  0 0   0      -0       1   100     1       1e3     0  
 ];
 
-% Sweden peak load ~ 25000 MW
+if optns.lowLoadScenario && ~ optns.setPenetration
+    optns.gen.extra(:,QMIN) = -100;
+    optns.gen.extra(:,QMAX) = 100;
+end
+
+% Sweden peak load ~ 25000 MW, min load ~ 9000 MW
 % subtract 2300 MW from external buses
 optns.gen.scaleFactor = ( sum(mpc.bus(:,PD)) ...
-        - sum( mpc.bus(mpc.bus(:,BUS_AREA) == 4,PD)) ) / 25e3; 
+        - sum( mpc.bus(mpc.bus(:,BUS_AREA) == 4,PD)) ) / highLoad; 
 
 
 % for PQ capability
@@ -136,9 +148,9 @@ optns.gen.scaleFactor = ( sum(mpc.bus(:,PD)) ...
 %    % zeros(4,1)
 % ];
 optns.gen.pqFactor = [
-    0*ones(12,1)
+    1*ones(12,1)
     0 % note gen 13 is synchronous condenser
-    0*ones(10,1)
+    1*ones(10,1)
     0*ones(14,1)
 ];
 
@@ -203,6 +215,41 @@ if optns.useOlaussonScenarios
     % SE3, SE4 -> Central and South
     optns.gen.windScenarios(southIdxExtra) = optns.gen.scaleFactor * ...
         sum(optns.gen.capacityTable(3:4))/sum(southIdxExtra);
+    
+    if optns.lowLoadScenario % create low-load scenario
+        
+        % scale down load (not external)
+        mpc.bus(mpc.bus(:,BUS_AREA) ~= 4,[PD QD]) = mpc.bus(mpc.bus(:,BUS_AREA)~= 4,[PD QD])*lowLoad/highLoad;
+        
+        % deactivate some nuclear
+        deactivatedGens = [18 21 16];
+        mpc.gen(deactivatedGens,[PG QG PMIN PMAX QMIN QMAX]) = 0;
+        
+        
+        % put base scenario into original PF
+        optns.gen.extra(:,PG) = optns.gen.windScenarios(:,1);
+        
+        % find conventional generators (internal)
+        idxConvIntGen = gen_idx( mpc.bus(mpc.bus(:,BUS_AREA)~=4,BUS_I),mpc);
+        
+        % surplus = wind + conventional (internal) - load (internal)
+        windTot = sum(optns.gen.extra(:,PG));
+        loadTot = sum(mpc.bus(mpc.bus(:,BUS_AREA)~=4,PD));
+        %surplus = sum(optns.gen.extra(:,PG)) + sum(mpc.gen(idxConvIntGen,PG)) - ...
+        %    sum(mpc.bus(mpc.bus(:,BUS_AREA) ~= 4,PD));
+        
+        % total wind must be less than interal load
+        assert(windTot < loadTot,...
+            'Total wind must be less than internal load');
+        
+        % scale down other generation
+        mpc.gen(idxConvIntGen,[PG QG]) = mpc.gen(idxConvIntGen,[PG QG]) * ...
+                                          (loadTot - windTot) / sum(mpc.gen(idxConvIntGen,PG));
+        
+        % how much generation is needed to match load
+    end
+    
+    
     else % set penetration level
         
         idxSweGen = gen_bus_2_digits < 70;
@@ -252,9 +299,9 @@ else
 end
 
 % increase and decrease in wind production
-% optns.gen.windScenarios = [
-%     optns.gen.windScenarios * [0.8 1.2]
-% ];
+optns.gen.windScenarios = [
+    optns.gen.windScenarios * [0.8 1.2]
+];
 
 %northSynchGen = sum(mpc.gen
 
@@ -328,12 +375,23 @@ mpc = setup_mpc(mpc,optns);
 
 % set min and max values for PG (not present in N32)
 mpc.gen(:,[PMAX PMIN]) = [mpc.gen(:,MBASE) zeros(size(mpc.gen,1),1)];
+
+
+if optns.lowLoadScenario && ~optns.setPenetration   
+    % change Q-limits
+    mpc.gen(:,QMIN) = -1e4;
+    % set limits for inactive generators
+    mpc.gen(deactivatedGens,[PG PMIN PMAX QMIN QMAX]) = 0;
+end
+
 % fix P limits for synchronous condenser
 mpc.gen(find(mpc.gen(:,GEN_BUS)==4041),PMAX) = 0;
 
+
+
 %% RUN INITIAL POWER FLOW FOR BASE CASE
 % do pfs quietly
-optns.mpopt.out.all = 0;
+optns.mpopt.out.all = 1;
 optns.mpopt.verbose = 4;
 optns.mpopt.pf.enforce_q_lims = 0;
 mpci = runpf(mpc,optns.mpopt);
