@@ -1,5 +1,7 @@
-close all;
-clear;
+function exitflag = run_opf_n32_fcn(caseName,windScenario,usePQConstraints,enableQWind)
+
+%close all;
+%clear;
 define_constants;
 vscopf_define_constants;
 
@@ -7,6 +9,10 @@ vscopf_define_constants;
 
 %% OPTIONS
 optns = struct();
+
+[optns.caseName, optns.windScenario, optns.usePQConstraints, optns.QWind] = deal(caseName,windScenario, usePQConstraints, enableQWind);
+
+%%
 
 optns.outputFile = '';
 
@@ -29,7 +35,7 @@ optns.setPenetration = 0; % Manually set penetration ratio of system for base ca
 optns.penetrationLevel = 0.6;
 optns.replaceGeneration = 1; % replace wind with synchronous generation in base case
 optns.generationReplacementTol = 5; % in MW
-optns.windScenario = 'D1'; % 
+%optns.windScenario = 'D1'; % 
 optns.lowLoadScenario = 0; % reduce load for low-load scenario
 
 highLoad = 25e3; % high load (in MW)
@@ -39,12 +45,12 @@ slackFactor = 0.9; % scale down generation, to get positive production at slack 
 
 optns.gen.optimizeBaseP = 1; 
 optns.gen.fixBaseWind = 1; % fix curtailable P for base case (only when optimizBbaseP) - NOT IMPLEMENTED
-optns.gen.usePQConstraints = 1;
-optns.QWind = 0;
+%optns.gen.usePQConstraints = 0;
+%optns.QWind = 0;
 
-optns.saveFigures = 0;
+optns.saveFigures = 1;
 optns.saveData = 1;
-optns.caseName = 'case7_D1';
+%optns.caseName = 'case7_D1';
 
 % activate/deactivate given wind power scenarios, if active the scenarios
 % will be constructed as [wind scenarios x contingencies]
@@ -151,13 +157,22 @@ optns.gen.scaleFactor = ( sum(mpc.bus(:,PD)) ...
 %    % 2*ones(23,1)
 %    % zeros(4,1)
 % ];
-optns.gen.pqFactor = [
-    1*ones(12,1)
-    0 % note gen 13 is synchronous condenser
-    1*ones(10,1)
-    0*ones(14,1)
-];
-
+if ~optns.QWind
+    optns.gen.pqFactor = [
+        1*ones(12,1)
+        0 % note gen 13 is synchronous condenser
+        1*ones(10,1)
+        0*ones(14,1)
+        ];
+else
+    optns.gen.pqFactor = [
+        1*ones(12,1)
+        0 % note gen 13 is synchronous condenser
+        1*ones(10,1)
+        0*ones(14,1)
+        %sqrt(1-0.9^2)/0.9*ones(14,1) % PF 0.9
+        ];
+end
 %mpc.gen(11,PG) = mpc.gen(11,PG)-50;
 %mpc.gen(10,PG) = mpc.gen(10,PG)-50;
 %optns.gen.compBuses = [4021 4012]; % generators at these buses will have their PG decreased to compensate for extra generation in base case
@@ -408,7 +423,7 @@ mpc.gen(find(mpc.gen(:,GEN_BUS)==4041),PMAX) = 0;
 
 %% RUN INITIAL POWER FLOW FOR BASE CASE
 % do pfs quietly
-optns.mpopt.out.all = 1;
+optns.mpopt.out.all = 0;
 optns.mpopt.verbose = 4;
 optns.mpopt.pf.enforce_q_lims = 0;
 mpci = runpf(mpc,optns.mpopt);
@@ -504,7 +519,7 @@ g_dev = sum(abs(g))
 h_dev = max(h)
 
 plot_results(restab,optns);
-
+close all;
 if optns.saveData == 1
-    save([optns.caseName '.mat'],'rescase','restab','om','x','Lambda','optns');
+    save([optns.caseName '.mat'],'rescase','restab','om','x','Lambda','optns','Output','f');
 end

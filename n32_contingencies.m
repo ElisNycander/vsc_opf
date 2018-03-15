@@ -18,14 +18,15 @@ c = [
 % %     1     2    1       0.5   % weaken line 2    
 
 %% N32 proposed contingencies 
-     2     16    1       0   % trip generator 16, nr 2 4047
+%     2     16    1       0   % trip generator 16, nr 2 4047
      2     19    1       0   % trip generator 19, nr 1 4062
      1     21    1       0   % trip line 21, 4011-4021
  
 % extra contingencies
 %     1     31    1      0    % trip line 31, 4031-4041
+     1     34    1      0    % trip line 34, 4032-4044
 
-% 	2     2    1       0   % trip generator 1
+     % 	2     2    1       0   % trip generator 1
 %	2     3    1       0   % trip generator 1
 
 %     2   1   1   0   1 % wind scenario nr 1, gen 1
