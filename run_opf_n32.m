@@ -25,26 +25,26 @@ optns.lambdaTolerance = 1e-2; % round smaller lambda to 0 for tables
 optns.useInitialPF = 1; % initial power flow must be solvable
 
 optns.useOlaussonScenarios = 1; % Scenario from Olausson (2015)
-optns.setPenetration = 0; % Manually set penetration ratio of system for base case to this value
-optns.penetrationLevel = 0.6;
+optns.setPenetration = 1; % Manually set penetration ratio of system for base case to this value
+optns.penetrationLevel = 0.8;
 optns.replaceGeneration = 1; % replace wind with synchronous generation in base case
 optns.generationReplacementTol = 5; % in MW
-optns.windScenario = 'D1'; % 
+optns.windScenario = 'B1'; % 
 optns.lowLoadScenario = 0; % reduce load for low-load scenario
 
-highLoad = 25e3; % high load (in MW)
+highLoad = 22e3; % high load (in MW)
 lowLoad = 10e3; % low load (in MW)
 
-slackFactor = 0.9; % scale down generation, to get positive production at slack bus in base case
+slackFactor = 1; % scale down generation, to get positive production at slack bus in base case
 
-optns.gen.optimizeBaseP = 1; 
+optns.gen.optimizeBaseP = 0; 
 optns.gen.fixBaseWind = 1; % fix curtailable P for base case (only when optimizBbaseP) - NOT IMPLEMENTED
-optns.gen.usePQConstraints = 1;
-optns.QWind = 0;
+optns.gen.usePQConstraints = 0;
+optns.QWind = 1;
 
-optns.saveFigures = 0;
-optns.saveData = 1;
-optns.caseName = 'case7_D1';
+optns.saveFigures = 1;
+optns.saveData = 0;
+optns.caseName = 'default_case';
 
 % activate/deactivate given wind power scenarios, if active the scenarios
 % will be constructed as [wind scenarios x contingencies]
@@ -52,11 +52,15 @@ optns.gen.useWindScenarios = 1;
 
 optns.useWindVariance = 1;
 optns.gen.windVariance = 0.0083;
+nr_std = 1.96; % for 95% confidence interval
 
 optns.transferCorridors = {
     [4011 4071;4012 4071], [4031 4041;4032 4044;4032 4042;4021 4042]
 }; % transfer over these lines will be summed (active power flow P)   
 optns.externalBuses = [4071 4072]; % used when computing wind pentration in plot_results
+
+optns.branch.limit = 1; % turn on/off branch limits % Note: if optimizeBaseP = 0 limits are only added for contingencies
+optns.branch.limit_base_case = 0;
 %%
 mpc = n32_define_areas(mpc);
 
@@ -67,6 +71,7 @@ op.verbose = 0;
 op.out.all = 0;
 mpco = runpf(mpc,op);
 
+totalGenOriginal = sum(mpco.gen(:,PG));
 
 %% generator options
 % extra generators           
@@ -171,7 +176,10 @@ fixedP_boolean = and(gen_bus_2_digits > 40, gen_bus_2_digits < 70);
 % 3 Curtailable - can be curtailed relative to base case in contingencies
 % Note: Variable is default
 %optns.gen.fixedP = [15 16 17 18];
-optns.gen.fixedP = [15:18 20 21]; % all nuclear reactors
+%optns.gen.fixedP = [15:18 20 21 23]; % all nuclear reactors, and 4072
+%optns.gen.fixedP = [];
+% only vary generators in North
+optns.gen.fixedP = find(gen_bus_2_digits > 40);
 
 %optns.gen.fixedP = find(fixedP_boolean);
 optns.gen.curtailableP = [24:24+size(optns.gen.extra,1)-1];
@@ -213,47 +221,47 @@ if optns.useOlaussonScenarios
     southIdxSynch = or(optns.gen.genArea == 2, optns.gen.genArea == 3);
     
     if ~ optns.setPenetration % penetration level from case is taken
-    % SE1, SE2 -> North
-    optns.gen.windScenarios(northIdxExtra) = optns.gen.scaleFactor * ...
-        sum(optns.gen.capacityTable(1:2))/sum(northIdxExtra);
-    % SE3, SE4 -> Central and South
-    optns.gen.windScenarios(southIdxExtra) = optns.gen.scaleFactor * ...
-        sum(optns.gen.capacityTable(3:4))/sum(southIdxExtra);
-    
-    if optns.lowLoadScenario % create low-load scenario
+        % SE1, SE2 -> North
+        optns.gen.windScenarios(northIdxExtra) = optns.gen.scaleFactor * ...
+            sum(optns.gen.capacityTable(1:2))/sum(northIdxExtra);
+        % SE3, SE4 -> Central and South
+        optns.gen.windScenarios(southIdxExtra) = optns.gen.scaleFactor * ...
+            sum(optns.gen.capacityTable(3:4))/sum(southIdxExtra);
         
-        % scale down load (not external)
-        mpc.bus(mpc.bus(:,BUS_AREA) ~= 4,[PD QD]) = mpc.bus(mpc.bus(:,BUS_AREA)~= 4,[PD QD])*lowLoad/highLoad;
+        if optns.lowLoadScenario % create low-load scenario
+            
+            % scale down load (not external)
+            mpc.bus(mpc.bus(:,BUS_AREA) ~= 4,[PD QD]) = mpc.bus(mpc.bus(:,BUS_AREA)~= 4,[PD QD])*lowLoad/highLoad;
+            
+            % deactivate some nuclear
+            deactivatedGens = [18 21 16];
+            mpc.gen(deactivatedGens,[PG QG PMIN PMAX QMIN QMAX]) = 0;
+            
+            
+            % put base scenario into original PF
+            optns.gen.extra(:,PG) = optns.gen.windScenarios(:,1);
+            
+            % find conventional generators (internal)
+            idxConvIntGen = gen_idx( mpc.bus(mpc.bus(:,BUS_AREA)~=4,BUS_I),mpc);
+            
+            % surplus = wind + conventional (internal) - load (internal)
+            windTot = sum(optns.gen.extra(:,PG));
+            loadTot = sum(mpc.bus(mpc.bus(:,BUS_AREA)~=4,PD));
+            %surplus = sum(optns.gen.extra(:,PG)) + sum(mpc.gen(idxConvIntGen,PG)) - ...
+            %    sum(mpc.bus(mpc.bus(:,BUS_AREA) ~= 4,PD));
+            
+            % total wind must be less than interal load
+            assert(windTot < loadTot,...
+                'Total wind must be less than internal load');
+            
+            % scale down other generation
+            mpc.gen(idxConvIntGen,[PG QG]) = mpc.gen(idxConvIntGen,[PG QG]) * ...
+                (loadTot - windTot) / sum(mpc.gen(idxConvIntGen,PG));
+            
+            % how much generation is needed to match load
+        end
         
-        % deactivate some nuclear
-        deactivatedGens = [18 21 16];
-        mpc.gen(deactivatedGens,[PG QG PMIN PMAX QMIN QMAX]) = 0;
         
-        
-        % put base scenario into original PF
-        optns.gen.extra(:,PG) = optns.gen.windScenarios(:,1);
-        
-        % find conventional generators (internal)
-        idxConvIntGen = gen_idx( mpc.bus(mpc.bus(:,BUS_AREA)~=4,BUS_I),mpc);
-        
-        % surplus = wind + conventional (internal) - load (internal)
-        windTot = sum(optns.gen.extra(:,PG));
-        loadTot = sum(mpc.bus(mpc.bus(:,BUS_AREA)~=4,PD));
-        %surplus = sum(optns.gen.extra(:,PG)) + sum(mpc.gen(idxConvIntGen,PG)) - ...
-        %    sum(mpc.bus(mpc.bus(:,BUS_AREA) ~= 4,PD));
-        
-        % total wind must be less than interal load
-        assert(windTot < loadTot,...
-            'Total wind must be less than internal load');
-        
-        % scale down other generation
-        mpc.gen(idxConvIntGen,[PG QG]) = mpc.gen(idxConvIntGen,[PG QG]) * ...
-                                          (loadTot - windTot) / sum(mpc.gen(idxConvIntGen,PG));
-        
-        % how much generation is needed to match load
-    end
-    
-    
     else % set penetration level
         
         idxSweGen = gen_bus_2_digits < 70;
@@ -275,15 +283,15 @@ if optns.useOlaussonScenarios
         if optns.useWindVariance
             % use 95% confidence interval for wind production
             optns.gen.extra(:,PG) = optns.gen.windScenarios(:,1) * ...
-                                (1-sqrt(optns.gen.windVariance)*1.96);
+                                (1-sqrt(optns.gen.windVariance)*nr_std);
         else
             % put base scenario into original PF
             optns.gen.extra(:,PG) = optns.gen.windScenarios(:,1);
         end
         
         % reduce other generation
-        northWindGen = sum(northIdxExtra .* optns.gen.windScenarios(:,1));
-        southWindGen = sum(southIdxExtra .* optns.gen.windScenarios(:,1));
+        northWindGen = sum(northIdxExtra .* optns.gen.extra(:,PG));
+        southWindGen = sum(southIdxExtra .* optns.gen.extra(:,PG));
         
         northGen = sum(northIdxSynch .* mpco.gen(:,PG));
         southGen = sum(southIdxSynch .* mpco.gen(:,PG));
@@ -311,9 +319,15 @@ end
 % increase and decrease in wind production
 if optns.useWindVariance
     optns.gen.windScenarios = [
-        optns.gen.windScenarios * [1 1-2*1.96*sqrt(optns.gen.windVariance)]
+        optns.gen.windScenarios * [1 1-2*nr_std*sqrt(optns.gen.windVariance)]
         ];
 end
+newScenario = zeros(size(optns.gen.windScenarios(:,1)));
+newScenario(northIdxExtra) = optns.gen.windScenarios(northIdxExtra,1);
+newScenario(southIdxExtra) = (1-2*nr_std*sqrt(optns.gen.windVariance))*...
+                            optns.gen.windScenarios(southIdxExtra,1);
+% make new scenario: increase in north, decrease in south
+optns.gen.windScenarios = [ optns.gen.windScenarios newScenario ];
 
 %northSynchGen = sum(mpc.gen
 
@@ -325,7 +339,7 @@ optns.gen.windProbabilities = [
 
 
 %% branch options
-optns.branch.limit = 1; % turn on/off branch limits 
+
 optns.branch.rateA = [ % branch limits, 0 means line is unconstrained, empty means default limit are used
 ];
 
@@ -410,7 +424,7 @@ mpc.gen(find(mpc.gen(:,GEN_BUS)==4041),PMAX) = 0;
 % do pfs quietly
 optns.mpopt.out.all = 1;
 optns.mpopt.verbose = 4;
-optns.mpopt.pf.enforce_q_lims = 0;
+optns.mpopt.pf.enforce_q_lims = 1;
 mpci = runpf(mpc,optns.mpopt);
 
 %mpc = mpci; % may change bus types, including slack
@@ -506,5 +520,5 @@ h_dev = max(h)
 plot_results(restab,optns);
 
 if optns.saveData == 1
-    save([optns.caseName '.mat'],'rescase','restab','om','x','Lambda','optns');
+    save(['data/' optns.caseName '.mat'],'rescase','restab','om','x','Lambda','optns');
 end

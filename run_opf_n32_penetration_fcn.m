@@ -1,4 +1,4 @@
-function exitflag = run_opf_n32_fcn(caseName,windScenario,usePQConstraints,enableQWind)
+function exitflag = run_opf_n32_penetration_fcn(caseName,windScenario,usePQConstraints,enableQWind,penetration)
 
 %close all;
 %clear;
@@ -10,7 +10,14 @@ vscopf_define_constants;
 %% OPTIONS
 optns = struct();
 
-[optns.caseName, optns.windScenario, optns.gen.usePQConstraints, optns.QWind] = deal(caseName,windScenario, usePQConstraints, enableQWind);
+[optns.caseName, optns.windScenario, optns.gen.usePQConstraints, optns.QWind, optns.penetrationLevel] = ...
+   deal(caseName,windScenario, usePQConstraints, enableQWind, penetration);
+
+% optns.caseName = 'case_default';
+% optns.windScenario = 'D1'; % 
+% optns.gen.usePQConstraints = 0;
+% optns.QWind = 0;
+% optns.penetrationLevel = 0.3;
 
 %%
 
@@ -32,26 +39,24 @@ optns.lambdaTolerance = 1e-2; % round smaller lambda to 0 for tables
 optns.useInitialPF = 1; % initial power flow must be solvable
 
 optns.useOlaussonScenarios = 1; % Scenario from Olausson (2015)
-optns.setPenetration = 0; % Manually set penetration ratio of system for base case to this value
-optns.penetrationLevel = 0.6;
+optns.setPenetration = 1; % Manually set penetration ratio of system for base case to this value
+
 optns.replaceGeneration = 1; % replace wind with synchronous generation in base case
 optns.generationReplacementTol = 5; % in MW
-%optns.windScenario = 'D1'; % 
+
 optns.lowLoadScenario = 0; % reduce load for low-load scenario
 
 highLoad = 22e3; % high load (in MW)
 lowLoad = 10e3; % low load (in MW)
 
-slackFactor = 0.95; % scale down generation, to get positive production at slack bus in base case
+slackFactor = 1; % scale down generation, to get positive production at slack bus in base case
 
 optns.gen.optimizeBaseP = 0; 
 optns.gen.fixBaseWind = 1; % fix curtailable P for base case (only when optimizBbaseP) - NOT IMPLEMENTED
-%optns.gen.usePQConstraints = 0;
-%optns.QWind = 0;
+
 
 optns.saveFigures = 1;
 optns.saveData = 1;
-%optns.caseName = 'case7_D1';
 
 % activate/deactivate given wind power scenarios, if active the scenarios
 % will be constructed as [wind scenarios x contingencies]
@@ -59,6 +64,7 @@ optns.gen.useWindScenarios = 1;
 
 optns.useWindVariance = 1;
 optns.gen.windVariance = 0.0083;
+nr_std = 1.96;
 
 optns.transferCorridors = {
     [4011 4071;4012 4071], [4031 4041;4032 4044;4032 4042;4021 4042]
@@ -294,7 +300,7 @@ if optns.useOlaussonScenarios
         if optns.useWindVariance
             % use 95% confidence interval for wind production
             optns.gen.extra(:,PG) = optns.gen.windScenarios(:,1) * ...
-                                (1-sqrt(optns.gen.windVariance)*1.96);
+                                (1-sqrt(optns.gen.windVariance)*nr_std);
         else
             % put base scenario into original PF
             optns.gen.extra(:,PG) = optns.gen.windScenarios(:,1);
@@ -330,9 +336,16 @@ end
 % increase and decrease in wind production
 if optns.useWindVariance
     optns.gen.windScenarios = [
-        optns.gen.windScenarios * [1 1-2*1.96*sqrt(optns.gen.windVariance)]
+        optns.gen.windScenarios * [1 1-2*nr_std*sqrt(optns.gen.windVariance)]
         ];
 end
+
+newScenario = zeros(size(optns.gen.windScenarios(:,1)));
+newScenario(northIdxExtra) = optns.gen.windScenarios(northIdxExtra,1);
+newScenario(southIdxExtra) = (1-2*nr_std*sqrt(optns.gen.windVariance))*...
+                            optns.gen.windScenarios(southIdxExtra,1);
+% make new scenario: increase in north, decrease in south
+optns.gen.windScenarios = [ optns.gen.windScenarios newScenario ];
 
 %northSynchGen = sum(mpc.gen
 
@@ -385,7 +398,7 @@ optns.bus.loadIncrease = []; % buses with load increase for contingencies
 %% matpower options
 optns.mpopt = mpoption();
 
-optns.mpopt.pf.enforce_q_lims = 1;
+optns.mpopt.pf.enforce_q_lims = 0;
 optns.mpopt.opf.flow_lim = 'S';
 
 %% solver options
@@ -416,8 +429,11 @@ if optns.lowLoadScenario && ~optns.setPenetration
 end
 
 if optns.QWind
-    mpc.gen(optns.gen.curtailableP,QMIN) = - mpc.gen(optns.gen.curtailableP,PG)* sqrt(1-0.81)/0.9;
-    mpc.gen(optns.gen.curtailableP,QMAX) = + mpc.gen(optns.gen.curtailableP,PG)* sqrt(1-0.81)/0.9;
+    %    mpc.gen(optns.gen.curtailableP,QMIN) = - mpc.gen(optns.gen.curtailableP,PG)* sqrt(1-0.81)/0.9;
+    %    mpc.gen(optns.gen.curtailableP,QMAX) = + mpc.gen(optns.gen.curtailableP,PG)* sqrt(1-0.81)/0.9;
+    
+    mpc.gen(optns.gen.curtailableP,QMIN) = - optns.gen.windScenarios(:,1) * sqrt(1-0.81)/0.9;
+    mpc.gen(optns.gen.curtailableP,QMAX) =   optns.gen.windScenarios(:,1) * sqrt(1-0.81)/0.9;
 end
 
 % fix P limits for synchronous condenser
@@ -525,6 +541,8 @@ h_dev = max(h)
 plot_results(restab,optns);
 close all;
 if optns.saveData == 1
-    save([optns.caseName '.mat'],'rescase','restab','om','x','Lambda','optns','Output','f');
+    save(['data/' optns.caseName '.mat'],'rescase','restab','om','x','Lambda','optns','Output','f');
 end
+
+
 exitflag = success;

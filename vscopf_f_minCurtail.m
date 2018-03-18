@@ -19,10 +19,12 @@ for i=2:mpc.contingencies.N % note: no curtailment for base case
    sidx = num2str(i); 
    idx(vv.i1.(['Beta' sidx]):vv.iN.(['Beta' sidx])) = true; 
 end
+% repeat probabilities for contingencies, excluding base case probability
 prob = zeros(nCurtail*(mpc.contingencies.N-1),1);
 for i=1:mpc.contingencies.N-1
     prob(1+(i-1)*nCurtail:i*nCurtail) = mpc.contingencies.probabilities(i+1);
 end
+% Note: base case excluded (as no curtailment in base case)
 f = sum( x(idx) .* wind(nCurtail+1:end) .* prob );
 
 

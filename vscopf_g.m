@@ -98,6 +98,8 @@ includePgBase = isfield(vv.i1,'Pg');
 if includePgBase
     % check if curtailable generators are included
     fixBaseWind = (vv.N.Pg < ng); 
+else
+    fixBaseWind = 0;
 end
 
 nzcounter = 0; % count number of non-zero entries to make sure entries are not overwritten
