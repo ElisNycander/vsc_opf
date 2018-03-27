@@ -18,14 +18,17 @@ ng = size(table.Pg,1);
 genLabels = cell(1,ng);
 for i=1:ng
    strIdx = num2str(table2array(table.Pg(i,'GEN')));
-   genLabels{i} = ['GEN ' strIdx];
+   %genLabels{i} = ['GEN ' strIdx];
+   busStr = num2str(table2array(table.Pg(i,'BUS')));
+   genLabels{i} =  ['GEN ' strIdx ' BUS ' busStr];
 end
 
 ncur = size(table.Beta,1);
 curLabels = cell(1,ncur);
 for i=1:ncur
     strIdx = num2str(table2array(table.Beta(i,'GEN')));
-    curLabels{i} = ['GEN ' strIdx];
+    busIdx = num2str(table2array(table.Beta(i,'BUS')));
+    curLabels{i} = ['GEN ' strIdx ' BUS ' busStr];
 end
 
 %% Pg for all generators
@@ -33,15 +36,38 @@ F1 = figure;
 PgMat = table2array(table.Pg(:, setdiff(table.Pg.Properties.VariableNames,{'GEN','BUS','MIN','MAX'})));
 PH1 = bar(1:N,PgMat');
 % change distinguish wind farms from other generators
-for i=1:length(optns.gen.curtailableP)
-   PH1(optns.gen.curtailableP(i)).EdgeColor = [1 0 0]; 
+%for i=1:length(optns.gen.curtailableP)
+%   PH1(optns.gen.curtailableP(i)).EdgeColor = [1 0 0]; 
+%end
+for i=1:length(PH1)
+    % Edge: Black - variable, Red - curtailable, None - Fixed
+    % determine type of generator 
+    if ismember( i,optns.gen.curtailableP ) % curtailable
+        PH1(i).EdgeColor = [0.75 0 0];
+    elseif ismember( i,optns.gen.fixedP ) % fixed 
+        PH1(i).EdgeColor = [0 0 0];
+    else % variable
+        PH1(i).EdgeColor = [1 1 1];
+    end
+    % determine location of generator
+    % North: Blue, Central: Green, South: Yellow, External: Grey
+    genbus = table2array( table.Qg( i,'BUS' ) );
+    genbus2d = rem( genbus,100 );
+    if genbus2d < 40 % North
+        PH1(i).FaceColor = [0.2810 0.3228 0.9579];
+    elseif genbus2d < 60 % Central
+        PH1(i).FaceColor = [0.3406 0.8008 0.4789];
+    elseif genbus2d < 70 % South
+        PH1(i).FaceColor = [0.9610 0.8890 0.1537];
+    else % External
+        PH1(i).FaceColor = [0.8571 0.8571 0.8571];
+    end
 end
-
 grid on;
 xlabel('Contingency scenario');
 ylabel('Pg (MW)')
 legend(genLabels);
-title('Active power')
+title(['Active power' '\newline' strrep(optns.caseName,'_',' ')])
 
 MaximizeFigureWindow();
 
@@ -51,15 +77,39 @@ F2 = figure;
 PH2 = bar(1:N,table2array(table.Qg(:, ...
     setdiff(table.Qg.Properties.VariableNames,{'GEN','BUS','MIN','MAX'})))' ...
 );
-for i=1:length(optns.gen.curtailableP)
-   PH2(optns.gen.curtailableP(i)).EdgeColor = [1 0 0]; 
+% for i=1:length(optns.gen.curtailableP)
+%    PH2(optns.gen.curtailableP(i)).EdgeColor = [1 0 0]; 
+% end
+for i=1:length(PH2)
+    % Edge: Black - variable, Red - curtailable, None - Fixed
+    % determine type of generator 
+    if ismember( i,optns.gen.curtailableP ) % curtailable
+        PH2(i).EdgeColor = [0.75 0 0];
+    elseif ismember( i,optns.gen.fixedP ) % fixed 
+        PH2(i).EdgeColor = [0 0 0];
+    else % variable
+        PH2(i).EdgeColor = [1 1 1];
+    end
+    % determine location of generator
+    % North: Blue, Central: Green, South: Yellow, External: Grey
+    genbus = table2array( table.Qg( i,'BUS' ) );
+    genbus2d = rem( genbus,100 );
+    if genbus2d < 40 % North
+        PH2(i).FaceColor = [0.2810 0.3228 0.9579];
+    elseif genbus2d < 60 % Central
+        PH2(i).FaceColor = [0.3406 0.8008 0.4789];
+    elseif genbus2d < 70 % South
+        PH2(i).FaceColor = [0.9610 0.8890 0.1537];
+    else % External
+        PH2(i).FaceColor = [0.8571 0.8571 0.8571];
+    end
 end
 
 grid on;
 xlabel('Contingency scenario');
 ylabel('Qg (MW)')
 legend(genLabels);
-title('Reactive power')
+title(['Reactive power' '\newline' strrep(optns.caseName,'_',' ')])
 
 MaximizeFigureWindow();
 
@@ -82,7 +132,7 @@ PH3 = bar(1:N,penetration*100);
 grid on;
 xlabel('Scenario');
 ylabel('Wind Penetration (%)');
-title('Penetration');
+title(['Penetration' '\newline' strrep(optns.caseName,'_',' ')]);
 
 
 
@@ -95,7 +145,7 @@ grid on;
 xlabel('Contingency scenario');
 ylabel('Curtailed energy (MW)');
 legend(curLabels);
-title('Curtailment')
+title(['Curtailment' '\newline' strrep(optns.caseName,'_',' ')])
 
 %% Beta for Pcur
 F5 = figure;
@@ -106,7 +156,7 @@ grid on;
 xlabel('Contingency scenario');
 ylabel('Beta');
 legend(curLabels);
-title('Curtailment fraction beta')
+title(['Curtailment fraction beta' '\newline' strrep(optns.caseName,'_',' ')])
 
 %% Total curtailment
 
@@ -118,7 +168,7 @@ PH6 = bar(1:N, curtailedTotal);
 grid on;
 xlabel('Contingency scenario');
 ylabel('Curtailment (MW)');
-title('Total curtailment')
+title(['Total curtailment' '\newline' strrep(optns.caseName,'_',' ')])
 
 %% Total curtailment in %
 wind = table2array(table.Wind(:,setdiff(table.Wind.Properties.VariableNames,{'GEN','BUS'})));
@@ -129,7 +179,7 @@ PH7 = bar(1:N, 100*curtailedTotal./windTotal);
 grid on;
 xlabel('Contingency scenario');
 ylabel('Curtailment (%)');
-title('Total curtailment')
+title(['Total curtailment' '\newline' strrep(optns.caseName,'_',' ')])
 
 
 %% Plot transfers in corridors
@@ -144,7 +194,7 @@ end
 legend(transLables);
 xlabel('Contingency scenario');
 ylabel('Active power transfer (MW)');
-title('Transfer through corridors');
+title(['Transfer through corridors' '\newline' strrep(optns.caseName,'_',' ')]);
 
 
 %% Voltages
@@ -198,7 +248,7 @@ grid on;
 xlabel('Contingency scenario');
 ylabel('V (pu)')
 
-title('Voltage')
+title(['Voltage' '\newline' strrep(optns.caseName,'_',' ')])
 ylim([0.85 1.15]);
 
 MaximizeFigureWindow();

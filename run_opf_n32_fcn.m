@@ -44,6 +44,8 @@ lowLoad = 10e3; % low load (in MW)
 
 slackFactor = 0.95; % scale down generation, to get positive production at slack bus in base case
 
+optns.branch.limit = 1; % turn on/off branch limits 
+
 optns.gen.optimizeBaseP = 0; 
 optns.gen.fixBaseWind = 1; % fix curtailable P for base case (only when optimizBbaseP) - NOT IMPLEMENTED
 %optns.gen.usePQConstraints = 0;
@@ -59,11 +61,23 @@ optns.gen.useWindScenarios = 1;
 
 optns.useWindVariance = 1;
 optns.gen.windVariance = 0.0083;
+nr_std = 1.96; % for 95% confidence interval
 
 optns.transferCorridors = {
-    [4011 4071;4012 4071], [4031 4041;4032 4044;4032 4042;4021 4042]
+    [4031 4041;4032 4044;4032 4042;4021 4042],[4011 4071;4012 4071]
 }; % transfer over these lines will be summed (active power flow P)   
 optns.externalBuses = [4071 4072]; % used when computing wind pentration in plot_results
+
+%% solver options
+foptions = optimoptions('fmincon','Algorithm','interior-point','GradObj','on','GradConstr','on');
+
+foptions.Display = 'off'; % off, testing, iter
+foptions.TolCon = 1e-10; % high value may give non-zero lagrange multipliers also for inactive constraints
+foptions.TolFun = 1e0;
+foptions.TolX = 1e-10;
+foptions.MaxIter = 10e3;
+foptions.MaxFunctionEvaluations = 10e3;
+
 %%
 mpc = n32_define_areas(mpc);
 
@@ -74,7 +88,7 @@ op.verbose = 0;
 op.out.all = 0;
 mpco = runpf(mpc,op);
 
-
+totalGenOriginal = sum(mpco.gen(:,PG));
 %% generator options
 % extra generators           
 %	bus	Pg	Qg	Qmax	Qmin	Vg	mBase	status	Pmax	Pmin	           
@@ -93,40 +107,40 @@ optns.gen.extra = [
 %     1041   0 0   50      -50       1   100     1       1e3     0  
   
 % choose some nodes
-% North
-    4011   0 0   0      -0       1   100     1       1e3     0
-    1011   0 0   0      -0       1   100     1       1e3     0
-    1014   0 0   0      -0       1   100     1       1e3     0
-    1012   0 0   0      -0       1   100     1       1e3     0
-    4022   0 0   0      -0       1   100     1       1e3     0
-    4021   0 0   0      -0       1   100     1       1e3     0
-    2031   0 0   0      -0       1   100     1       1e3     0
-% Central and Southwest
-    1041   0 0   0      -0       1   100     1       1e3     0  
-    1045   0 0   0      -0       1   100     1       1e3     0  
-    4051  0 0   0      -0       1   100     1       1e3     0  
-    4046  0 0   0      -0       1   100     1       1e3     0  
-    4061  0 0   0      -0       1   100     1       1e3     0  
-    1044  0 0   0      -0       1   100     1       1e3     0  
-    4062  0 0   0      -0       1   100     1       1e3     0  
-    
-    % choose some nodes, ordered by increasing bus idx
-% North
+% % North
+%     4011   0 0   0      -0       1   100     1       1e3     0
 %     1011   0 0   0      -0       1   100     1       1e3     0
-%     1012   0 0   0      -0       1   100     1       1e3     0
 %     1014   0 0   0      -0       1   100     1       1e3     0
-%     1041   0 0   0      -0       1   100     1       1e3     0
-%     1044   0 0   0      -0       1   100     1       1e3     0
-%     1045   0 0   0      -0       1   100     1       1e3     0
+%     1012   0 0   0      -0       1   100     1       1e3     0
+%     4022   0 0   0      -0       1   100     1       1e3     0
+%     4021   0 0   0      -0       1   100     1       1e3     0
 %     2031   0 0   0      -0       1   100     1       1e3     0
 % % Central and Southwest
-%     4011   0 0   0      -0       1   100     1       1e3     0  
-%     4021   0 0   0      -0       1   100     1       1e3     0  
-%     4022  0 0   0      -0       1   100     1       1e3     0  
-%     4046  0 0   0      -0       1   100     1       1e3     0  
+%     1041   0 0   0      -0       1   100     1       1e3     0  
+%     1045   0 0   0      -0       1   100     1       1e3     0  
 %     4051  0 0   0      -0       1   100     1       1e3     0  
+%     4046  0 0   0      -0       1   100     1       1e3     0  
 %     4061  0 0   0      -0       1   100     1       1e3     0  
+%     1044  0 0   0      -0       1   100     1       1e3     0  
 %     4062  0 0   0      -0       1   100     1       1e3     0  
+    
+% North
+    4011   0 0   0      -0       1   100     1       1e3     0
+    4012   0 0   0      -0       1   100     1       1e3     0
+    4022   0 0   0      -0       1   100     1       1e3     0
+    4021   0 0   0      -0       1   100     1       1e3     0
+    4031   0 0   0      -0       1   100     1       1e3     0
+    4032   0 0   0      -0       1   100     1       1e3     0
+    2031   0 0   0      -0       1   100     1       1e3     0
+% Central and Southwest
+    4041   0 0   0      -0       1   100     1       1e3     0  
+    4044   0 0   0      -0       1   100     1       1e3     0  
+    4047  0 0   0      -0       1   100     1       1e3     0  
+    4045  0 0   0      -0       1   100     1       1e3     0  
+    4051  0 0   0      -0       1   100     1       1e3     0  
+    4062  0 0   0      -0       1   100     1       1e3     0  
+    4063  0 0   0      -0       1   100     1       1e3     0  
+     
 ];
 
 if optns.lowLoadScenario && ~ optns.setPenetration
@@ -165,13 +179,21 @@ if ~optns.QWind
         1*ones(10,1)
         0*ones(14,1)
         ];
-else
+elseif ~optns.gen.usePQConstraints
     optns.gen.pqFactor = [
+        0*ones(12,1)
+        0 % note gen 13 is synchronous condenser
+        0*ones(10,1)
+        %0*ones(14,1)
+        sqrt(1-0.9^2)/0.9*ones(14,1) % PF 0.9
+        ];
+else % both PQ constraints and Q from wind
+        optns.gen.pqFactor = [
         1*ones(12,1)
         0 % note gen 13 is synchronous condenser
         1*ones(10,1)
-        0*ones(14,1)
-        %sqrt(1-0.9^2)/0.9*ones(14,1) % PF 0.9
+        %0*ones(14,1)
+        sqrt(1-0.9^2)/0.9*ones(14,1) % PF 0.9
         ];
 end
 %mpc.gen(11,PG) = mpc.gen(11,PG)-50;
@@ -188,9 +210,9 @@ fixedP_boolean = and(gen_bus_2_digits > 40, gen_bus_2_digits < 70);
 % Note: Variable is default
 %optns.gen.fixedP = [15 16 17 18];
 %optns.gen.fixedP = [15:18 20 21]; % all nuclear reactors
-
+optns.gen.fixedP = [15:18 20 21 23]; % all nuclear reactors, and 4072
 % only vary generators in North
-optns.gen.fixedP = find(gen_bus_2_digits > 40);
+%optns.gen.fixedP = find(gen_bus_2_digits > 40);
 
 %optns.gen.fixedP = find(fixedP_boolean);
 optns.gen.curtailableP = [24:24+size(optns.gen.extra,1)-1];
@@ -294,7 +316,7 @@ if optns.useOlaussonScenarios
         if optns.useWindVariance
             % use 95% confidence interval for wind production
             optns.gen.extra(:,PG) = optns.gen.windScenarios(:,1) * ...
-                                (1-sqrt(optns.gen.windVariance)*1.96);
+                                (1-sqrt(optns.gen.windVariance)*nr_std);
         else
             % put base scenario into original PF
             optns.gen.extra(:,PG) = optns.gen.windScenarios(:,1);
@@ -330,7 +352,7 @@ end
 % increase and decrease in wind production
 if optns.useWindVariance
     optns.gen.windScenarios = [
-        optns.gen.windScenarios * [1 1-2*1.96*sqrt(optns.gen.windVariance)]
+        optns.gen.windScenarios * [1 1-2*nr_std*sqrt(optns.gen.windVariance)]
         ];
 end
 
@@ -344,7 +366,7 @@ optns.gen.windProbabilities = [
 
 
 %% branch options
-optns.branch.limit = 1; % turn on/off branch limits 
+
 optns.branch.rateA = [ % branch limits, 0 means line is unconstrained, empty means default limit are used
 ];
 
@@ -357,10 +379,15 @@ rateA = zeros(size(rateFrom));
 
 rateA(rateFrom == rateTo) = rateFrom(rateFrom == rateTo);
 % transmission lines
+lines = optns.transferCorridors{1};
+idxCritLines = line_idx(lines(:,1),lines(:,2),mpco);
+
 rateA(rateA == 1000) = 350;
 rateA(rateA == 2000) = 500;
 rateA(rateA == 4000) = 1400;
+%rateA(idxCritLines) = 800;
 % step up transformers
+
 rateA( and( rateA == 0,mpc.branch(:,RATE_A)==0 ) ) = [ ...
    1250
    1250
@@ -382,21 +409,7 @@ optns.branch.duplicate = []; % duplicate these branches
 optns.bus.loadIncrease = []; % buses with load increase for contingencies
 
 
-%% matpower options
-optns.mpopt = mpoption();
 
-optns.mpopt.pf.enforce_q_lims = 1;
-optns.mpopt.opf.flow_lim = 'S';
-
-%% solver options
-foptions = optimoptions('fmincon','Algorithm','interior-point','GradObj','on','GradConstr','on');
-
-foptions.Display = 'off'; % off, testing, iter
-foptions.TolCon = 1e-10; % high value may give non-zero lagrange multipliers also for inactive constraints
-foptions.TolFun = 1e0;
-foptions.TolX = 1e-10;
-foptions.MaxIter = 2e3;
-foptions.MaxFunctionEvaluations = 10e3;
 
 %% CHECK OPTIONS
 optns = check_opf_options(mpc,optns);
@@ -426,10 +439,17 @@ mpc.gen(find(mpc.gen(:,GEN_BUS)==4041),PMAX) = 0;
 
 
 %% RUN INITIAL POWER FLOW FOR BASE CASE
+
+%% matpower options
+optns.mpopt = mpoption();
+
+optns.mpopt.pf.enforce_q_lims = 1;
+optns.mpopt.opf.flow_lim = 'S';
+
 % do pfs quietly
 optns.mpopt.out.all = 0;
 optns.mpopt.verbose = 4;
-optns.mpopt.pf.enforce_q_lims = 1;
+
 mpci = runpf(mpc,optns.mpopt);
 
 %mpc = mpci; % may change bus types, including slack
@@ -525,6 +545,6 @@ h_dev = max(h)
 plot_results(restab,optns);
 close all;
 if optns.saveData == 1
-    save([optns.caseName '.mat'],'rescase','restab','om','x','Lambda','optns','Output','f');
+    save(['data/' optns.caseName '.mat'],'rescase','restab','om','x','Lambda','optns','Output','f');
 end
 exitflag = success;

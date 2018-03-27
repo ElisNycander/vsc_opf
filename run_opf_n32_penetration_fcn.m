@@ -75,7 +75,7 @@ mpc = n32_define_areas(mpc);
 
 % run load flow for original system
 op = mpoption();
-op.pf.enforce_q_lims = 1;
+op.pf.enforce_q_lims = 0;
 op.verbose = 0;
 op.out.all = 0;
 mpco = runpf(mpc,op);
@@ -372,7 +372,7 @@ rateA(rateFrom == rateTo) = rateFrom(rateFrom == rateTo);
 % transmission lines
 rateA(rateA == 1000) = 350;
 rateA(rateA == 2000) = 500;
-rateA(rateA == 4000) = 1400;
+rateA(rateA == 4000) = 1000;
 % step up transformers
 rateA( and( rateA == 0,mpc.branch(:,RATE_A)==0 ) ) = [ ...
    1250
@@ -395,11 +395,6 @@ optns.branch.duplicate = []; % duplicate these branches
 optns.bus.loadIncrease = []; % buses with load increase for contingencies
 
 
-%% matpower options
-optns.mpopt = mpoption();
-
-optns.mpopt.pf.enforce_q_lims = 0;
-optns.mpopt.opf.flow_lim = 'S';
 
 %% solver options
 foptions = optimoptions('fmincon','Algorithm','interior-point','GradObj','on','GradConstr','on');
@@ -442,10 +437,16 @@ mpc.gen(find(mpc.gen(:,GEN_BUS)==4041),PMAX) = 0;
 
 
 %% RUN INITIAL POWER FLOW FOR BASE CASE
+
+%% matpower options
+optns.mpopt = mpoption();
+
+optns.mpopt.opf.flow_lim = 'S';
+
 % do pfs quietly
 optns.mpopt.out.all = 0;
 optns.mpopt.verbose = 4;
-optns.mpopt.pf.enforce_q_lims = 1;
+optns.mpopt.pf.enforce_q_lims = 0;
 mpci = runpf(mpc,optns.mpopt);
 
 %mpc = mpci; % may change bus types, including slack
@@ -538,8 +539,8 @@ restab.transferTo
 g_dev = sum(abs(g))
 h_dev = max(h)
 
-plot_results(restab,optns);
-close all;
+%plot_results(restab,optns);
+%close all;
 if optns.saveData == 1
     save(['data/' optns.caseName '.mat'],'rescase','restab','om','x','Lambda','optns','Output','f');
 end

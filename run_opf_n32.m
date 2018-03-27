@@ -20,31 +20,31 @@ optns.hessian = 0;
 optns.verify = 1; % verify_solutions
 optns.verifyPQconversion = 0; % convert PV buses with generators at Q-limits to PQ in power flow
 
-optns.lambdaTolerance = 1e-2; % round smaller lambda to 0 for tables
+optns.lambdaTolerance = 1e-3; % round smaller lambda to 0 for tables
 
 optns.useInitialPF = 1; % initial power flow must be solvable
 
-optns.useOlaussonScenarios = 1; % Scenario from Olausson (2015)
-optns.setPenetration = 1; % Manually set penetration ratio of system for base case to this value
+optns.useOlaussonScenarios = 0; % Scenario from Olausson (2015)
+optns.setPenetration = 0; % Manually set penetration ratio of system for base case to this value
 optns.penetrationLevel = 0.8;
 optns.replaceGeneration = 1; % replace wind with synchronous generation in base case
 optns.generationReplacementTol = 5; % in MW
-optns.windScenario = 'B1'; % 
+optns.windScenario = 'C2'; % 
 optns.lowLoadScenario = 0; % reduce load for low-load scenario
 
 highLoad = 22e3; % high load (in MW)
 lowLoad = 10e3; % low load (in MW)
 
-slackFactor = 1; % scale down generation, to get positive production at slack bus in base case
+slackFactor = 0.95; % scale down generation, to get positive production at slack bus in base case
 
 optns.gen.optimizeBaseP = 0; 
 optns.gen.fixBaseWind = 1; % fix curtailable P for base case (only when optimizBbaseP) - NOT IMPLEMENTED
 optns.gen.usePQConstraints = 0;
-optns.QWind = 1;
+optns.QWind = 0;
 
 optns.saveFigures = 1;
-optns.saveData = 0;
-optns.caseName = 'default_case';
+optns.saveData = 1;
+optns.caseName = '19-03-C1';
 
 % activate/deactivate given wind power scenarios, if active the scenarios
 % will be constructed as [wind scenarios x contingencies]
@@ -55,18 +55,29 @@ optns.gen.windVariance = 0.0083;
 nr_std = 1.96; % for 95% confidence interval
 
 optns.transferCorridors = {
-    [4011 4071;4012 4071], [4031 4041;4032 4044;4032 4042;4021 4042]
+    [4031 4041;4032 4044;4032 4042;4021 4042], [4011 4071;4012 4071]
 }; % transfer over these lines will be summed (active power flow P)   
 optns.externalBuses = [4071 4072]; % used when computing wind pentration in plot_results
 
 optns.branch.limit = 1; % turn on/off branch limits % Note: if optimizeBaseP = 0 limits are only added for contingencies
 optns.branch.limit_base_case = 0;
+
+%% solver options
+foptions = optimoptions('fmincon','Algorithm','interior-point','GradObj','on','GradConstr','on');
+
+foptions.Display = 'off'; % off, testing, iter
+foptions.TolCon = 1e-10; % high value may give non-zero lagrange multipliers also for inactive constraints
+foptions.TolFun = 1e0;
+foptions.TolX = 1e-10;
+foptions.MaxIter = 1e3;
+foptions.MaxFunctionEvaluations = 2e3;
+
 %%
 mpc = n32_define_areas(mpc);
 
 % run load flow for original system
 op = mpoption();
-op.pf.enforce_q_lims = 1;
+op.pf.enforce_q_lims = 0;
 op.verbose = 0;
 op.out.all = 0;
 mpco = runpf(mpc,op);
@@ -90,8 +101,8 @@ optns.gen.extra = [
 %     41     0 0   50      -50       1   100     1       1e3     0
 %     1041   0 0   50      -50       1   100     1       1e3     0  
   
-% choose some nodes
-% North
+% % choose some nodes
+% % North
     4011   0 0   0      -0       1   100     1       1e3     0
     1011   0 0   0      -0       1   100     1       1e3     0
     1014   0 0   0      -0       1   100     1       1e3     0
@@ -100,14 +111,32 @@ optns.gen.extra = [
     4021   0 0   0      -0       1   100     1       1e3     0
     2031   0 0   0      -0       1   100     1       1e3     0
 % Central and Southwest
-    1041   0 0   0      -0       1   100     1       1e3     0  
-    1045   0 0   0      -0       1   100     1       1e3     0  
-    4051  0 0   0      -0       1   100     1       1e3     0  
-    4046  0 0   0      -0       1   100     1       1e3     0  
-    4061  0 0   0      -0       1   100     1       1e3     0  
-    1044  0 0   0      -0       1   100     1       1e3     0  
-    4062  0 0   0      -0       1   100     1       1e3     0  
-    
+%     1041   0 0   0      -0       1   100     1       1e3     0  
+%     1045   0 0   0      -0       1   100     1       1e3     0  
+     4051  0 0   0      -0       1   100     1       1e3     0  
+     4046  0 0   0      -0       1   100     1       1e3     0  
+     4061  0 0   0      -0       1   100     1       1e3     0  
+%     1044  0 0   0      -0       1   100     1       1e3     0  
+%     4062  0 0   0      -0       1   100     1       1e3     0  
+
+    % choose some nodes
+% North
+%     4011   0 0   0      -0       1   100     1       1e3     0
+%     4012   0 0   0      -0       1   100     1       1e3     0
+%     4022   0 0   0      -0       1   100     1       1e3     0
+%     4021   0 0   0      -0       1   100     1       1e3     0
+%     4031   0 0   0      -0       1   100     1       1e3     0
+%     4032   0 0   0      -0       1   100     1       1e3     0
+%     2031   0 0   0      -0       1   100     1       1e3     0
+% % Central and Southwest
+%     4041   0 0   0      -0       1   100     1       1e3     0  
+%     4044   0 0   0      -0       1   100     1       1e3     0  
+%     4047  0 0   0      -0       1   100     1       1e3     0  
+%     4045  0 0   0      -0       1   100     1       1e3     0  
+%     4051  0 0   0      -0       1   100     1       1e3     0  
+%     4062  0 0   0      -0       1   100     1       1e3     0  
+%     4063  0 0   0      -0       1   100     1       1e3     0  
+%     
     % choose some nodes, ordered by increasing bus idx
 % North
 %     1011   0 0   0      -0       1   100     1       1e3     0
@@ -156,11 +185,17 @@ optns.gen.scaleFactor = ( sum(mpc.bus(:,PD)) ...
 %    % 2*ones(23,1)
 %    % zeros(4,1)
 % ];
+% optns.gen.pqFactor = [
+%     1*ones(12,1)
+%     0 % note gen 13 is synchronous condenser
+%     1*ones(10,1)
+%     0*ones(14,1)
+% ];
 optns.gen.pqFactor = [
     1*ones(12,1)
     0 % note gen 13 is synchronous condenser
     1*ones(10,1)
-    0*ones(14,1)
+    0*ones(size(optns.gen.extra,1),1)
 ];
 
 %mpc.gen(11,PG) = mpc.gen(11,PG)-50;
@@ -314,6 +349,10 @@ if optns.useOlaussonScenarios
     end
 else
     optns.gen.windScenarios = [500];
+    optns.gen.extra(:,PG) = optns.gen.windScenarios * (1-nr_std*sqrt(optns.gen.windVariance));
+    windTotal = sum(optns.gen.extra(:,PG));
+    
+    mpc.gen(:,PG) = mpc.gen(:,PG) * (1 - windTotal / sum(mpc.gen(:,PG)));
 end
 
 % increase and decrease in wind production
@@ -322,12 +361,12 @@ if optns.useWindVariance
         optns.gen.windScenarios * [1 1-2*nr_std*sqrt(optns.gen.windVariance)]
         ];
 end
-newScenario = zeros(size(optns.gen.windScenarios(:,1)));
-newScenario(northIdxExtra) = optns.gen.windScenarios(northIdxExtra,1);
-newScenario(southIdxExtra) = (1-2*nr_std*sqrt(optns.gen.windVariance))*...
-                            optns.gen.windScenarios(southIdxExtra,1);
+%newScenario = zeros(size(optns.gen.windScenarios(:,1)));
+%newScenario(northIdxExtra) = optns.gen.windScenarios(northIdxExtra,1);
+%newScenario(southIdxExtra) = (1-2*nr_std*sqrt(optns.gen.windVariance))*...
+%                            optns.gen.windScenarios(southIdxExtra,1);
 % make new scenario: increase in north, decrease in south
-optns.gen.windScenarios = [ optns.gen.windScenarios newScenario ];
+%optns.gen.windScenarios = [ optns.gen.windScenarios newScenario ];
 
 %northSynchGen = sum(mpc.gen
 
@@ -352,9 +391,14 @@ rateA = zeros(size(rateFrom));
 
 rateA(rateFrom == rateTo) = rateFrom(rateFrom == rateTo);
 % transmission lines
+lines = optns.transferCorridors{1};
+idxCritLines = line_idx(lines(:,1),lines(:,2),mpco);
+
 rateA(rateA == 1000) = 350;
 rateA(rateA == 2000) = 500;
+%rateA(rateA == 4000) = 1400/2;
 rateA(rateA == 4000) = 1400;
+rateA(idxCritLines) = 1400;
 % step up transformers
 rateA( and( rateA == 0,mpc.branch(:,RATE_A)==0 ) ) = [ ...
    1250
@@ -377,21 +421,6 @@ optns.branch.duplicate = []; % duplicate these branches
 optns.bus.loadIncrease = []; % buses with load increase for contingencies
 
 
-%% matpower options
-optns.mpopt = mpoption();
-
-optns.mpopt.pf.enforce_q_lims = 1;
-optns.mpopt.opf.flow_lim = 'S';
-
-%% solver options
-foptions = optimoptions('fmincon','Algorithm','interior-point','GradObj','on','GradConstr','on');
-
-foptions.Display = 'off'; % off, testing, iter
-foptions.TolCon = 1e-10; % high value may give non-zero lagrange multipliers also for inactive constraints
-foptions.TolFun = 1e0;
-foptions.TolX = 1e-10;
-foptions.MaxIter = 2e3;
-foptions.MaxFunctionEvaluations = 10e3;
 
 %% CHECK OPTIONS
 optns = check_opf_options(mpc,optns);
@@ -421,10 +450,15 @@ mpc.gen(find(mpc.gen(:,GEN_BUS)==4041),PMAX) = 0;
 
 
 %% RUN INITIAL POWER FLOW FOR BASE CASE
+
+%% matpower options
+optns.mpopt = mpoption();
+optns.mpopt.opf.flow_lim = 'S';
+
 % do pfs quietly
 optns.mpopt.out.all = 1;
 optns.mpopt.verbose = 4;
-optns.mpopt.pf.enforce_q_lims = 1;
+optns.mpopt.pf.enforce_q_lims = 0;
 mpci = runpf(mpc,optns.mpopt);
 
 %mpc = mpci; % may change bus types, including slack
@@ -433,6 +467,7 @@ if optns.useInitialPF
     assert(mpci.success == 1,'Initial power flow was unsuccessful');
     % copy base case values, for initial guess
     mpc.gen(:,[QG PG]) = mpci.gen(:,[QG PG]);
+    %mpc.gen(:,PG) = mpci.gen(:,PG);
     mpc.bus(:,[VM VA]) = mpci.bus(:,[VM VA]);
     assert(min(mpc.gen(:,PG) >= 0),'At least one generator with negative Pg for base case')
     %mpc.bus(:,BUS_TYPE) = mpci.bus(:,BUS_TYPE);

@@ -108,8 +108,10 @@ om = opf_model(mpc);
           om = add_constraints(om, 'Pmis', nb, 'nonlinear');
           om = add_constraints(om, 'Qmis', nb, 'nonlinear');
           
-          om = add_constraints(om, 'Sf', nConstrainedLines, 'nonlinear');
-          om = add_constraints(om, 'St', nConstrainedLines, 'nonlinear');
+          if optns.gen.optimizeBaseP % only add constraints if optimizeBaseP 
+              om = add_constraints(om, 'Sf', nConstrainedLines, 'nonlinear');
+              om = add_constraints(om, 'St', nConstrainedLines, 'nonlinear');
+          end
           
       else
           

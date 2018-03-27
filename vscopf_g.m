@@ -57,6 +57,14 @@ ng = size(gen, 1);          %% number of dispatchable injections
 nxyz = length(x);           %% total number of control vars of all types
 nc = cs.N; % includes base case
 
+%% check if base case Pg are included as optimization variables
+includePgBase = isfield(vv.i1,'Pg');
+if includePgBase
+    % check if curtailable generators are included
+    fixBaseWind = (vv.N.Pg < ng); 
+else
+    fixBaseWind = 0;
+end
 
     %% find constrained lines
         %% number of constrained lines
@@ -68,7 +76,11 @@ g = zeros(2*nb*nc,1);
 dg = zeros(length(g),nxyz);
 
 if nConstrainedLines % prepare for line flow constraints
-    nInequalityConstraints = 2*sum(cs.nConstrainedActiveLines);
+    if includePgBase % constraint for all cases
+        nInequalityConstraints = 2*sum(cs.nConstrainedActiveLines);
+    else % only constraints for contingencies
+        nInequalityConstraints = 2*sum(cs.nConstrainedActiveLines(2:end));
+    end
     h = zeros(nInequalityConstraints,1);
     dh = zeros(nInequalityConstraints,nxyz);
     %h = [];
@@ -93,14 +105,6 @@ bolIdxPFix = gen2(:,PTYPE) == PFIX;
 
 
 
-% check if base case Pg are included as optimization variables
-includePgBase = isfield(vv.i1,'Pg');
-if includePgBase
-    % check if curtailable generators are included
-    fixBaseWind = (vv.N.Pg < ng); 
-else
-    fixBaseWind = 0;
-end
 
 nzcounter = 0; % count number of non-zero entries to make sure entries are not overwritten
 ycounter = 0;
@@ -170,7 +174,11 @@ for i=1:nc     % loop over all cases, including base case
     end
     
     nMismatch = nn.N.(['Qmis' sidx]) + nn.N.(['Pmis' sidx]);
-    nBranchLimits = nn.N.(['Sf' sidx]) + nn.N.(['St' sidx]);
+    if includePgBase || i > 1
+        nBranchLimits = nn.N.(['Sf' sidx]) + nn.N.(['St' sidx]);
+    else
+       nBranchLimits = 0; 
+    end
     
     Pg = x(iPg);
     Qg = x(iQg);
@@ -212,32 +220,34 @@ for i=1:nc     % loop over all cases, including base case
     
     if nConstrainedLines > 0 % then, the inequality constraints (branch flow limits)
         
-        
-        flow_max = branch(idxBranch, RATE_A) / baseMVA;
-        if lim_type ~= 'P'        %% typically use square of flow
-            flow_max = flow_max.^2;
-        end
-        
-        if lim_type == 'I'    %% current magnitude limit, |I|
-            If = iiYf * V;
-            It = iiYt * V;
-
-            h(hcounter+1:hcounter+nBranchLimits,1) = ...
-              [ If .* conj(If) - flow_max;    %% branch current limits (from bus)
-                It .* conj(It) - flow_max ];  %% branch current limits (to bus)
-        else
-            %% compute branch power flows
-            Sf = V(branch(idxBranch, F_BUS)) .* conj(iiYf * V);  %% complex power injected at "from" bus (p.u.)
-            St = V(branch(idxBranch, T_BUS)) .* conj(iiYt * V);  %% complex power injected at "to" bus (p.u.)
-
-            if lim_type == 'P'                      %% active power limit, P
-                 h(hcounter+1:hcounter+nBranchLimits,1) = ... 
-                  [ real(Sf) - flow_max;                %% branch real power limits (from bus)
-                    real(St) - flow_max ];              %% branch real power limits (to bus
-            else                                        %% apparent power limit, |S|
-                 h(hcounter+1:hcounter+nBranchLimits,1) = ...
-                  [ Sf .* conj(Sf) - flow_max;          %% branch apparent power limits (from bus)
-                    St .* conj(St) - flow_max ];        %% branch apparent power limits (to bus)
+        if includePgBase || i > 1
+            
+            flow_max = branch(idxBranch, RATE_A) / baseMVA;
+            if lim_type ~= 'P'        %% typically use square of flow
+                flow_max = flow_max.^2;
+            end
+            
+            if lim_type == 'I'    %% current magnitude limit, |I|
+                If = iiYf * V;
+                It = iiYt * V;
+                
+                h(hcounter+1:hcounter+nBranchLimits,1) = ...
+                    [ If .* conj(If) - flow_max;    %% branch current limits (from bus)
+                    It .* conj(It) - flow_max ];  %% branch current limits (to bus)
+            else
+                %% compute branch power flows
+                Sf = V(branch(idxBranch, F_BUS)) .* conj(iiYf * V);  %% complex power injected at "from" bus (p.u.)
+                St = V(branch(idxBranch, T_BUS)) .* conj(iiYt * V);  %% complex power injected at "to" bus (p.u.)
+                
+                if lim_type == 'P'                      %% active power limit, P
+                    h(hcounter+1:hcounter+nBranchLimits,1) = ...
+                        [ real(Sf) - flow_max;                %% branch real power limits (from bus)
+                        real(St) - flow_max ];              %% branch real power limits (to bus
+                else                                        %% apparent power limit, |S|
+                    h(hcounter+1:hcounter+nBranchLimits,1) = ...
+                        [ Sf .* conj(Sf) - flow_max;          %% branch apparent power limits (from bus)
+                        St .* conj(St) - flow_max ];        %% branch apparent power limits (to bus)
+                end
             end
         end
     end
@@ -297,47 +307,48 @@ for i=1:nc     % loop over all cases, including base case
             dg(sub2ind(size(dg),gen(idxPBaseOpt,GEN_BUS)+2*nb*(i-1),idxPBaseOpt+vv.i1.Pg-1)) = - ones(1, nPBaseOpt);
         end
 
-       
+        
         %% JACOBIAN FOR BRANCH LIMITS
         if nConstrainedLines > 0
             % NOTE: Branch flows independent of injected powers, hence no
             % modification of Jacobian necessary
-            
-            %% compute partials of Flows w.r.t. V
-            if lim_type == 'I'                      %% current
-                [dFf_dVa, dFf_dVm, dFt_dVa, dFt_dVm, Ff, Ft] = dIbr_dV(branch(idxBranch,:), iiYf, iiYt, V);
-            else                                    %% power
-                [dFf_dVa, dFf_dVm, dFt_dVa, dFt_dVm, Ff, Ft] = dSbr_dV(branch(idxBranch,:), iiYf, iiYt, V);
+            if includePgBase || i > 1
+                %% compute partials of Flows w.r.t. V
+                if lim_type == 'I'                      %% current
+                    [dFf_dVa, dFf_dVm, dFt_dVa, dFt_dVm, Ff, Ft] = dIbr_dV(branch(idxBranch,:), iiYf, iiYt, V);
+                else                                    %% power
+                    [dFf_dVa, dFf_dVm, dFt_dVa, dFt_dVm, Ff, Ft] = dSbr_dV(branch(idxBranch,:), iiYf, iiYt, V);
+                end
+                if lim_type == 'P' || lim_type == '2'   %% real part of flow (active power)
+                    dFf_dVa = real(dFf_dVa);
+                    dFf_dVm = real(dFf_dVm);
+                    dFt_dVa = real(dFt_dVa);
+                    dFt_dVm = real(dFt_dVm);
+                    Ff = real(Ff);
+                    Ft = real(Ft);
+                end
+                
+                if lim_type == 'P'
+                    %% active power
+                    [df_dVa, df_dVm, dt_dVa, dt_dVm] = deal(dFf_dVa, dFf_dVm, dFt_dVa, dFt_dVm);
+                else
+                    %% squared magnitude of flow (of complex power or current, or real power)
+                    [df_dVa, df_dVm, dt_dVa, dt_dVm] = ...
+                        dAbr_dV(dFf_dVa, dFf_dVm, dFt_dVa, dFt_dVm, Ff, Ft);
+                end
+                
+                %% construct Jacobian of inequality (branch flow) constraints & transpose
+                %dh = sparse(2*nConstrainedLines, nxyz);
+                dh(hcounter+1:hcounter+nBranchLimits, [iVa iVm]) = [
+                    df_dVa df_dVm;                     %% "from" flow limit
+                    dt_dVa dt_dVm;                     %% "to" flow limit
+                    ];
+                dh_nzeros = nnz(dh);
+                assert(dh_nzeros == nzcounter + nnz(df_dVa) + nnz(df_dVm) + nnz(dt_dVa) + nnz(dt_dVm),...
+                    'Entries overwritten in dh');
+                nzcounter = dh_nzeros;
             end
-            if lim_type == 'P' || lim_type == '2'   %% real part of flow (active power)
-                dFf_dVa = real(dFf_dVa);
-                dFf_dVm = real(dFf_dVm);
-                dFt_dVa = real(dFt_dVa);
-                dFt_dVm = real(dFt_dVm);
-                Ff = real(Ff);
-                Ft = real(Ft);
-            end
-            
-            if lim_type == 'P'
-                %% active power
-                [df_dVa, df_dVm, dt_dVa, dt_dVm] = deal(dFf_dVa, dFf_dVm, dFt_dVa, dFt_dVm);
-            else
-                %% squared magnitude of flow (of complex power or current, or real power)
-                [df_dVa, df_dVm, dt_dVa, dt_dVm] = ...
-                    dAbr_dV(dFf_dVa, dFf_dVm, dFt_dVa, dFt_dVm, Ff, Ft);
-            end
-            
-            %% construct Jacobian of inequality (branch flow) constraints & transpose
-            %dh = sparse(2*nConstrainedLines, nxyz);
-            dh(hcounter+1:hcounter+nBranchLimits, [iVa iVm]) = [
-                df_dVa df_dVm;                     %% "from" flow limit
-                dt_dVa dt_dVm;                     %% "to" flow limit
-                ];
-            dh_nzeros = nnz(dh);
-            assert(dh_nzeros == nzcounter + nnz(df_dVa) + nnz(df_dVm) + nnz(dt_dVa) + nnz(dt_dVm),...
-                'Entries overwritten in dh');
-            nzcounter = dh_nzeros;
-        end   
+        end
     end
 	
 	% restore tripped generation

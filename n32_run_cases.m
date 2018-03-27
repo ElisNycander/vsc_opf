@@ -1,16 +1,18 @@
 close all;
 clear;
 
+saveData = 1;
 rerun_simulations = 0;
-base_identifier = 'run5';
+base_identifier = 'run13';
 
 %cases = {'B1','B2','C1','C2','D1'};
-cases = {'B1'};
-penetration = 0.3:0.1:0.8;
+cases = {'B1','B2','C1','C2'};
+%cases = {'C1'};
+%penetration = 0.3:0.1:0.8;
 %PQ_constraints = [0 1];
 PQ_constraints = 0;
-%Q_wind = [0 1];
 Q_wind = 0;
+%Q_wind = 0;
 
 %% run simulations
 ijkl = 1;
@@ -51,8 +53,7 @@ for i=1:length(cases)
                 caseNames{ijkl} = [base_identifier '_' caseNames{ijkl}];
                 
                 if rerun_simulations
-                    run_opf_n32_fcn(caseNames{ijk},cases{i},PQ_constraints(j),Q_wind(k));
-                    %run_opf_n32_penetraction_fcn(caseNames{ijkl},cases{i},PQ_constraints(j),Q_wind(k),penetration);
+                    run_opf_n32_fcn(caseNames{ijkl},cases{i},PQ_constraints(j),Q_wind(k));
                 end
                 
                 ijkl = ijkl + 1;
@@ -61,7 +62,7 @@ for i=1:length(cases)
     end
 end
 
-
+success = [];
 f_values = [];
 outmsg = {};
 curtailment_nom = [];
@@ -95,8 +96,10 @@ for i=1:length(caseNames)
     curtailment_pc_exp(i) = sum(curtailment_pc(i,:) .* table2array(restab.ExpCurtail(1,:)));
     
     %% Transfer through corridors
-    transferNorthSouth(i,:) = table2array(restab.transferFrom(2,setdiff( restab.transferFrom.Properties.VariableNames,{'CORRIDOR'})));
+    transferNorthSouth(i,:) = table2array(restab.transferFrom(1,setdiff( restab.transferFrom.Properties.VariableNames,{'CORRIDOR'})));
     
+    %% successful optimization
+    success(i) = rescase.success;
 end
 
 caseNames = strrep(caseNames,'_',' ');
@@ -106,7 +109,7 @@ F1 = figure;
 bar(categorical(caseNames),curtailment_nom_exp.');
 ylabel('Curtailment (MW)');
 xlabel('Case');
-title('Total expected curtailment')
+title(['Total expected curtailment' '\newline' strrep(base_identifier,'_',' ')])
 
 
 
@@ -116,7 +119,7 @@ xlabel('Contingency scenario');
 L2 = legend(caseNames);
 L2.Position = [0.25 0.25 0 0];
 ylabel('Curtailment (MW)');
-title('Total curtailment')
+title(['Total curtailment' '\newline' strrep(base_identifier,'_',' ')])
 
 F3 = figure;
 bar(1:size(curtailment_pc,2),curtailment_pc.');
@@ -124,13 +127,13 @@ ylabel('Curtailment (%)');
 L3 = legend(caseNames);
 L3.Position = [0.25 0.25 0 0];
 xlabel('Contingency scenario');
-title('Total curtailment');
+title(['Total curtailment' '\newline' strrep(base_identifier,'_',' ')]);
 
 F4 = figure;
 bar(categorical(caseNames),curtailment_pc_exp.');
 ylabel('Curtailment (%)');
 xlabel('Case');
-title('Total expected curtailment')
+title(['Total expected curtailment' '\newline' strrep(base_identifier,'_',' ')])
 
 
 F5 = figure;
@@ -139,19 +142,38 @@ ylabel('Transfer (MW)');
 L5 = legend(caseNames);
 L5.Position = [0.25 0.25 0 0];
 xlabel('Contingency scenario');
-title('Transfer from North to Central');
+title(['Transfer from North to Central' '\newline' strrep(base_identifier,'_',' ')]);
+figs = [F1 F2 F3 F4 F5];
 
-F6 = figure;
-plot(penetration,curtailment_nom_exp);
-grid on;
-xlabel('Penetration (%)');
-ylabel('Curtailment (MW)');
+if exist('penetration','var')
+    F6 = figure;
+    plot(penetration,curtailment_nom_exp);
+    grid on;
+    xlabel('Penetration (%)');
+    ylabel('Curtailment (MW)');
+    title(['Total expected curtailment' '\newline' strrep(base_identifier,'_',' ')])
+    figs = [figs F6];
+    
+end
 
-figs = [F1 F2 F3 F4 F5 F6];
-figNames = {'CurTotMW','CurMW','CurPC','CurTotPC','Transfer','CurTotMW_xy'};
+F7 = figure;
+bar(categorical(caseNames),success.');
+xlabel('Case')
+title(['Successful optimization' '\newline' strrep(base_identifier,'_',' ')])
+
+figs = [figs F7];
+if exist('penetration','var')
+    figNames = {'CurTotMW','CurMW','CurPC','CurTotPC','Transfer','CurTotMW_xy','Success'};
+else
+    figNames = {'CurTotMW','CurMW','CurPC','CurTotPC','Transfer','Success'};
+end
+
 for i=1:length(figs)
     thisFigureName = [base_identifier '_' figNames{i}];
     saveas(figs(i),['figures/runs/' thisFigureName '.fig']);
     saveas(figs(i),['figures/runs/' thisFigureName '.png']);
 end
 
+if saveData
+    save(['data/aggregateData_' base_identifier '.mat'],'curtailment_pc_exp','curtailment_nom_exp','caseNames');
+end

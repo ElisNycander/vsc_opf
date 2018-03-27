@@ -76,6 +76,7 @@ Sflow = nan(nl,2*nc);
 Pflow = nan(nl,2*nc);
 Iflow = nan(nl,2*nc);
 Qflow = nan(nl,2*nc);
+Ploss = nan(nl,2*nc);
 
 flow_lam = nan(size(flow));
 % Pg_lamU = nan(size(Pg));
@@ -211,6 +212,13 @@ for i=1:nc
     
     Pflow(active_lines,2*i-1) = real(iSf)*baseMVA;
     Pflow(active_lines,2*i) = real(iSt)*baseMVA;
+    Ploss(active_lines,2*i-1) = ( real(iSf) + real(iSt) ) * baseMVA;
+    
+    Pinj = zeros(size(iSf));
+    for ii=1:length(iSf) 
+        Pinj(ii) = max( real(iSf(ii)),real(iSt(ii)) ); 
+    end
+    Ploss(active_lines,2*i) = Ploss(active_lines,2*i-1) ./ Pinj;
     
     Qflow(active_lines,2*i-1) = imag(iSf)*baseMVA;
     Qflow(active_lines,2*i) = imag(iSt)*baseMVA;
@@ -221,12 +229,27 @@ for i=1:nc
 
 
     % lagrange multipliers for line constraints
+    if optns.gen.optimizeBaseP
     flow_lam(cs.constrainedActiveLines(:,i),2*i-1) = Lambda.ineqnonlin(...
             countConstrainedLines : countConstrainedLines + cs.nConstrainedActiveLines(i) - 1 );
     flow_lam(cs.constrainedActiveLines(:,i),2*i) = Lambda.ineqnonlin(...
             countConstrainedLines+cs.nConstrainedActiveLines(i) : ...
             countConstrainedLines+2*cs.nConstrainedActiveLines(i) - 1);
+    else
+        if i == 1
+            flow_lam(cs.constrainedActiveLines(:,i),2*i-1) = NaN;
+            flow_lam(cs.constrainedActiveLines(:,i),2*i) = NaN;
+        else
+            flow_lam(cs.constrainedActiveLines(:,i),2*i-1) = Lambda.ineqnonlin(...
+                countConstrainedLines : countConstrainedLines + cs.nConstrainedActiveLines(i) - 1 );
+            flow_lam(cs.constrainedActiveLines(:,i),2*i) = Lambda.ineqnonlin(...
+                countConstrainedLines+cs.nConstrainedActiveLines(i) : ...
+                countConstrainedLines+2*cs.nConstrainedActiveLines(i) - 1);
+        end
         
+        
+    end
+    
     % sum flows over corridors
     for j=1:length(optns.transferCorridors)
         thisCorridor = optns.corridorIdxs{j};
@@ -245,9 +268,11 @@ for i=1:nc
             end
         end
     end
-        
-    %% increment counters    
-    countConstrainedLines = countConstrainedLines + 2*cs.nConstrainedActiveLines(i);
+    
+    %% increment counters
+    if optns.gen.optimizeBaseP || i > 1
+        countConstrainedLines = countConstrainedLines + 2*cs.nConstrainedActiveLines(i);
+    end
     countLines = countLines + inl;
 end
 
@@ -259,6 +284,8 @@ elseif strcmp(mpopt.opf.flow_lim,'P')
 else
     flow = Sflow;
 end
+
+
 
 
 % put gen bus in matrix, convert to nominal units
@@ -310,8 +337,10 @@ VaL = [busExt VaL];
 flow = [(1:size(branch,1))' mpc.order.bus.i2e(branch(:,F_BUS)) mpc.order.bus.i2e(branch(:,T_BUS)) branch(:,RATE_A) flow];
 flow_lam = [(1:size(branch,1))' mpc.order.bus.i2e(branch(:,F_BUS)) mpc.order.bus.i2e(branch(:,T_BUS)) branch(:,RATE_A) flow_lam];
 
+
 Pflow = [(1:size(branch,1))' mpc.order.bus.i2e(branch(:,F_BUS)) mpc.order.bus.i2e(branch(:,T_BUS)) Pflow];
 Qflow = [(1:size(branch,1))' mpc.order.bus.i2e(branch(:,F_BUS)) mpc.order.bus.i2e(branch(:,T_BUS)) Qflow];
+Ploss = [(1:size(branch,1))' mpc.order.bus.i2e(branch(:,F_BUS)) mpc.order.bus.i2e(branch(:,T_BUS)) Ploss];
 
 corrFrom = [(1:size(corrFrom,1))' corrFrom];
 corrTo = [(1:size(corrTo,1))' corrTo];
@@ -344,6 +373,7 @@ varnames_vmlam = {'BUS'};
 varnames_corridors = {'CORRIDOR'};
 varnames_pflow = {'BRANCH','FROM','TO'};
 varnames_qflow = {'BRANCH','FROM','TO'};
+varnames_ploss = {'BRANCH','FROM','TO'};
 for i=1:nc
 	if i == 1
 		stringIdx = '';
@@ -369,6 +399,8 @@ for i=1:nc
     varnames_pflow{2*i+3} = ['PT' stringIdx];
     varnames_qflow{2*i+2} = ['QF' stringIdx];
     varnames_qflow{2*i+3} = ['QT' stringIdx];
+    varnames_ploss{2*i+2} = ['MW' stringIdx];
+    varnames_ploss{2*i+3} = ['PC' stringIdx];
 end
 
 Pg_table = array2table(Pg,...
@@ -399,6 +431,7 @@ transferTo_table = array2table(corrTo,'VariableNames',varnames_corridors);
 
 Pflow_table = array2table(Pflow,'VariableNames',varnames_pflow);
 Qflow_table = array2table(Qflow,'VariableNames',varnames_qflow);
+Ploss_table = array2table(Ploss,'VariableNames',varnames_ploss);
 
 %% table with PQ-capability constraints
 pqGens = find(optns.gen.pqFactor);
@@ -491,7 +524,7 @@ tab = struct();
     deal(Pg_lamU_table,Pg_lamL_table,Qg_lamU_table,Qg_lamL_table,Vm_lamU_table,Vm_lamL_table,Va_lamU_table,Va_lamL_table, Beta_table);
 [tab.ExpCurtail, tab.Wind, tab.PQ] = deal(expCurtail_table, Wind_table,PQ_table);
 [tab.lamInfo, tab.transferFrom, tab.transferTo, tab.Pflow, tab.Qflow] = deal(lamInfo, transferFrom_table, transferTo_table, Pflow_table, Qflow_table);
-
+[tab.Ploss] = deal(Ploss_table);
 results = mpc;
 [results.bus, results.branch, results.gen, results.gen2, results.bus2, ...
     results.om] = ...

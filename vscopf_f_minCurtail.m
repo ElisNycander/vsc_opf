@@ -9,7 +9,8 @@ mpc = get_mpc(om);
 vv = get_idx(om);
 wind = mpc.contingencies.wind/mpc.baseMVA; % wind scenarios
 prob = mpc.contingencies.probabilities;
-nCurtail = length(find(mpc.gen2(mpc.gen2(:,PTYPE) == PCUR)));
+%nCurtail = length(find(mpc.gen2(mpc.gen2(:,PTYPE) == PCUR)));
+nCurtail = length(find(mpc.gen2(:,PTYPE) == PCUR));
 %% problem dimensions
 nxyz = length(x);           %% total number of control vars of all types
 
