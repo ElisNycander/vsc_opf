@@ -70,7 +70,7 @@ plot_buses = [
 
 %% options
 
-mpopt  =  mpoption('out.all',  0,  'verbose',  0);
+mpopt  =  mpoption('out.all',  1,  'verbose',  2);
 
 mpopt = mpoption(mpopt, 'out.sys_sum', 1,  ...
                         'out.area_sum', 1, ...
@@ -152,8 +152,9 @@ end
 % generators with generation increase
 idxGenIncrease = [];
 for i=1:size(spica_gen_increase,1)
-    bus = spica_gen_increase(i,1);
-    idxGenIncrease = [idxGenIncrease find(mpc.gen(:,GEN_BUS)==bus)];
+    bus = spica_gen_increase(i,1)
+    find(mpc.gen(:,GEN_BUS)==bus)
+    idxGenIncrease = [idxGenIncrease find(mpc.gen(:,GEN_BUS)==bus)]
 end
 
 % buses with load increase

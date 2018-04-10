@@ -29,8 +29,8 @@ vscopf_define_constants;
 %optns.mpopt.opf.flow_lim = 'S';
 
 % do pfs quietly
-%optns.mpopt.out.all = 0;
-%optns.mpopt.verbose = 0;
+optns.mpopt.out.all = 0;
+optns.mpopt.verbose = 2;
 %optns.mpopt.pf.enforce_q_lims = 0;
 mpci = runpf(mpc,optns.mpopt);
 
@@ -87,8 +87,8 @@ end
 %[x0 x Lambda.lower Lambda.upper LB UB]
 
 [h,g] = g_fcn(x);
-g_dev = sum(abs(g));
-h_dev = max(h);
+g_dev = sum(abs(g))
+h_dev = max(h)
 
 % collect results in tables
 [rescase,restab] = get_opf_results(om,x,Lambda,optns);

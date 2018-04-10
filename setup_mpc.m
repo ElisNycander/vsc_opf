@@ -45,6 +45,15 @@ for i=1:ng_extra
         warning('VG set point at new generators changed to agree with old generators')
    end
 end
+
+% set all buses with generators to PV buses
+for i=1:size(mpc.bus,1)
+    if ~ isempty( find( mpc.gen(:,GEN_BUS) == mpc.bus(i,BUS_I),1 ) )
+        if mpc.bus(i,BUS_TYPE) == PQ % Change PQ buse to PV
+            mpc.bus( i,BUS_TYPE ) = PV;
+        end
+    end
+end
     
 % % compensate PG to maintain active power balance
 % % find all generators at buses where to perform compensation

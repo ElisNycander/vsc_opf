@@ -2,7 +2,10 @@ clear;
 close all;
 define_constants;
 
-mpc = Nordic32;
+load('cpf_data.mat');
+
+%runpf(mpc);
+mpc = int2ext(mpc);
 
 buses = [
     4031
@@ -11,12 +14,6 @@ buses = [
     4021
     4012
     4011
-    4041
-    4042
-    4044
-    4043
-    4045
-    4046
     ];
 
 nbus = length(buses);

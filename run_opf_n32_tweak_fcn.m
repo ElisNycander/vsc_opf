@@ -8,7 +8,7 @@ optns = struct();
 % close all;
 % 
 % optns.caseName = 'E1_default';
-% optns.windScenario = 'E1';
+% optns.windScenario = 'E3';
 % 
 % 
 % optns.gen.usePQConstraints = 1;
@@ -16,13 +16,13 @@ optns = struct();
 % 
 % plotResults = 1;
 % 
-% optns.penetrationLevel = 0.5;
+% optns.penetrationLevel = 0.995;
 
 
 %% function
 define_constants;
 vscopf_define_constants;
- optns.verifyTol = 1; 
+optns.verifyTol = 1; 
 optns.timer = 1;
 optns.baseCaseTransferIncrease = 400;
 optns.reduceAllGeneration = 0; % reduce all generation to compensate for wind power, i.e. i
@@ -78,7 +78,7 @@ optns.saveData = 1;
 % will be constructed as [wind scenarios x contingencies]
 optns.gen.useWindScenarios = 1;
 
-optns.useWindVariance = 1;
+optns.useWindVariance = 0;
 optns.gen.windVariance = 0.0083;
 nr_std = 1.96; % for 95% confidence interval
 
@@ -215,9 +215,9 @@ optns.gen.windScenarios = zeros(size(optns.gen.extra,1),1);
 
 idxSweGen = gen_bus_2_digits < 70;
 %totGen = sum(mpc.gen(idxSweGen,PG)); % total synchronous generation
-switch optns.windScenario
+if  strcmp(optns.windScenario,'E1') || strcmp(optns.windScenario,'E3')
     
-    case 'E1' % Only wind in North
+   
         
 %         if optns.reduceAllGeneration
 %             idxReduceGen = ncIdxSynch;
@@ -247,7 +247,7 @@ switch optns.windScenario
         %mpc.gen(idxReduceGen,PG) = mpc.gen(idxReduceGen,PG)*slackFactor;
         
         
-    case 'E2'
+elseif strcmp(optns.windScenario,'E2')
         % penetration based central and north
         totGenCN = sum(mpc.gen( ncIdxSynch , PG ));
         totWind = optns.penetrationLevel * totGenCN;
@@ -268,8 +268,9 @@ if optns.useWindVariance
     optns.gen.windScenarios = [
         optns.gen.windScenarios * [1-nr_std*sqrt(optns.gen.windVariance) 1+nr_std*sqrt(optns.gen.windVariance)]
         ];
+else
+    optns.gen.windScenarios = 1.2 * optns.gen.windScenarios; % 20% increase
 end
-
 
 % probabilities for wind scenarios, empty means all scenarios equally
 % likely
@@ -350,6 +351,7 @@ if optns.verify == 1
     success = restab.solutions_verified;
     fprintf(['\nSolutions verified: %i\n'],sum(success)==mpc.contingencies.N);
 end
+
 
 %% Plots results
 if plotResults

@@ -2,10 +2,10 @@ close all;
 clear;
 
 rerun_simulations = 1;
-base_identifier = 'run32';
+base_identifier = 'run43';
 
-windScenario = 'E1';
-penetration = 0.8:0.005:0.985;
+windScenario = 'E3';
+penetration = 0.8:0.005:0.995;
 %PQ_constraints = [0 1];
 PQ_constraints = 1;
 Q_wind = 0;
