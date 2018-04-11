@@ -143,16 +143,16 @@ bar(categorical(caseNames),success.');
 xlabel('Case')
 title(['Successful optimization' '\newline' strrep(base_identifier,'_',' ')])
 
-figs = [figs F7];
-if exist('penetration','var')
-    figNames = {'CurTotMW','CurMW','CurPC','CurTotPC','Transfer','CurTotMW_xy','Success'};
-else
-    figNames = {'CurTotMW','CurMW','CurPC','CurTotPC','Transfer','Success'};
-end
-
-for i=1:length(figs)
-    thisFigureName = [base_identifier '_' figNames{i}];
-    saveas(figs(i),['figures/runs/' thisFigureName '.fig']);
-    saveas(figs(i),['figures/runs/' thisFigureName '.png']);
-end
+% figs = [figs F7];
+% if exist('penetration','var')
+%     figNames = {'CurTotMW','CurMW','CurPC','CurTotPC','Transfer','CurTotMW_xy','Success'};
+% else
+%     figNames = {'CurTotMW','CurMW','CurPC','CurTotPC','Transfer','Success'};
+% end
+% 
+% for i=1:length(figs)
+%     thisFigureName = [base_identifier '_' figNames{i}];
+%     saveas(figs(i),['figures/runs/' thisFigureName '.fig']);
+%     saveas(figs(i),['figures/runs/' thisFigureName '.png']);
+% end
 
