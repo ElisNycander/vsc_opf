@@ -1,22 +1,36 @@
-function exitflag = run_opf_n32_tweak_fcn(caseName,windScenario,usePQConstraints,enableQWind,penetration,plotResults)
-optns = struct();
+%function exitflag = run_opf_n32_tweak_fcn(caseName,windScenario,usePQConstraints,enableQWind,penetration,plotResults)
+optns = vscopf_options();
 
-[optns.caseName,optns.windScenario, optns.gen.usePQConstraints, optns.QWind, optns.penetrationLevel] = ...
-   deal(caseName,windScenario, usePQConstraints, enableQWind, penetration);
+%[optns.caseName,optns.windScenario, optns.gen.usePQConstraints, optns.QWind, optns.penetrationLevel] = ...
+%   deal(caseName,windScenario, usePQConstraints, enableQWind, penetration);
 %% for script
-% clear;
-% close all;
-% 
-% optns.caseName = 'E1_default';
-% optns.windScenario = 'E3';
-% 
-% 
-% optns.gen.usePQConstraints = 1;
-% optns.QWind = 0;
-% 
-% plotResults = 1;
-% 
-% optns.penetrationLevel = 0.995;
+clear;
+close all;
+
+optns.caseName = 'E3_default';
+optns.windScenario = 'E3';
+
+%optns.scenario_names = {'Base scenario','20% wind increase'};
+optns.plot.plots = struct(...
+               'Pg',1,...
+               'Qg',1,...
+               'Vm',1,...
+               'Curtail',0,...
+               'CurtailTotal',0,...
+               'CurtailTotalPercent',0,...
+               'Beta',1,...
+               'Transfer',0,...
+               'Penetration',0);
+           
+%optns.plot.plot_titles = 0;
+
+optns.gen.usePQConstraints = 1;
+optns.QWind = 0;
+
+plotResults = 1;
+
+optns.penetrationLevel = 0.995;
+
 
 
 %% function
@@ -28,6 +42,8 @@ optns.baseCaseTransferIncrease = 400;
 optns.reduceAllGeneration = 0; % reduce all generation to compensate for wind power, i.e. i
                                 % increased transfers
 %% OPTIONS
+
+%% matpower
 optns.mpopt = mpoption();
 optns.mpopt.opf.flow_lim = 'S';
 
@@ -37,6 +53,14 @@ optns.mpopt.verbose = 2;
 optns.mpopt.pf.enforce_q_lims = 0;
 
 
+%% plot options
+if ~isfield(optns,'plotGreyscale')
+    optns.plotGreyscale = 0;
+end
+
+
+
+%% case settings
 optns.outputFile = '';
 
 optns.caseFile = 'Nordic32';
@@ -355,7 +379,8 @@ end
 
 %% Plots results
 if plotResults
-    plot_results(restab,optns);
+    %plot_results(restab,optns);
+    plot_results(restab,optns)
 end
 
 if optns.saveData == 1

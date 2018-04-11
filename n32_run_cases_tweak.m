@@ -31,7 +31,7 @@ for j=1:length(PQ_constraints)
             caseNames{jkl} = [base_identifier '_' caseNames{jkl}];
             
             if rerun_simulations
-                run_opf_n32_tweak_fcn(caseNames{jkl},windScenario,PQ_constraints(j),Q_wind(k),penetration(l),save_plots);
+                run_opf_n32(caseNames{jkl},windScenario,PQ_constraints(j),Q_wind(k),penetration(l),save_plots);
             end
             
             jkl = jkl + 1;

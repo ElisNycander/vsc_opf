@@ -1,63 +1,41 @@
 close all;
 clear;
 
-saveData = 1;
-rerun_simulations = 0;
-base_identifier = 'run13';
+rerun_simulations = 1;
+base_identifier = 'run44';
 
-%cases = {'B1','B2','C1','C2','D1'};
-cases = {'B1','B2','C1','C2'};
-%cases = {'C1'};
-%penetration = 0.3:0.1:0.8;
+windScenario = 'E3';
+penetration = 0.98:0.005:0.995;
 %PQ_constraints = [0 1];
-PQ_constraints = 0;
+PQ_constraints = 1;
 Q_wind = 0;
-%Q_wind = 0;
+save_plots = 0;
+show_plots = 0;
 
 %% run simulations
-ijkl = 1;
-for i=1:length(cases)
-    for j=1:length(PQ_constraints)
-        for k=1:length(Q_wind)
-            if exist('penetration','var')
-                for l=1:length(penetration)
-                    
-                    caseNames{ijkl} = cases{i};
-                    if PQ_constraints(j) == 1
-                        caseNames{ijkl} = [caseNames{ijkl} '_PQ'];
-                    end
-                    if Q_wind(k) == 1
-                        caseNames{ijkl} = [caseNames{ijkl} '_Qwind'];
-                    end
-                    % add
-                    caseNames{ijkl} = [caseNames{ijkl} '_P' strrep( num2str(penetration(l) ),'.','')];
-                    caseNames{ijkl} = [base_identifier '_' caseNames{ijkl}];
-                    
-                    if rerun_simulations
-                        %run_opf_n32_fcn(caseNames{ijk},cases{i},PQ_constraints(j),Q_wind(k));
-                        run_opf_n32_penetration_fcn(caseNames{ijkl},cases{i},PQ_constraints(j),Q_wind(k),penetration(l));
-                    end
-                    
-                    ijkl = ijkl + 1;
-                    
-                end
-            else
-                caseNames{ijkl} = cases{i};
-                if PQ_constraints(j) == 1
-                    caseNames{ijkl} = [caseNames{ijkl} '_PQ'];
-                end
-                if Q_wind(k) == 1
-                    caseNames{ijkl} = [caseNames{ijkl} '_Qwind'];
-                end
-                
-                caseNames{ijkl} = [base_identifier '_' caseNames{ijkl}];
-                
-                if rerun_simulations
-                    run_opf_n32_fcn(caseNames{ijkl},cases{i},PQ_constraints(j),Q_wind(k));
-                end
-                
-                ijkl = ijkl + 1;
+jkl = 1;
+for j=1:length(PQ_constraints)
+    for k=1:length(Q_wind)
+        
+        for l=1:length(penetration)
+            
+            caseNames{jkl} = windScenario;
+            if PQ_constraints(j) == 1
+                caseNames{jkl} = [caseNames{jkl} '_PQ'];
             end
+            if Q_wind(k) == 1
+                caseNames{jkl} = [caseNames{jkl} '_Qwind'];
+            end
+            % add
+            caseNames{jkl} = [caseNames{jkl} '_P' strrep( num2str(penetration(l) ),'.','')];
+            caseNames{jkl} = [base_identifier '_' caseNames{jkl}];
+            
+            if rerun_simulations
+                run_opf_n32(caseNames{jkl},windScenario,PQ_constraints(j),Q_wind(k),penetration(l),save_plots);
+            end
+            
+            jkl = jkl + 1;
+            
         end
     end
 end
@@ -75,7 +53,11 @@ for i=1:length(caseNames)
     % load data
     load(['data/' caseNames{i} '.mat']);
     
-    f_values(i) = f;
+    if show_plots
+       plot_results(restab,optns); 
+    end
+    
+    f_values(i) = restab.f;
     outmsg{i} = Output.message;
     
     %% Total curtailment (for each scenario and case in MW)
@@ -99,7 +81,7 @@ for i=1:length(caseNames)
     transferNorthSouth(i,:) = table2array(restab.transferFrom(1,setdiff( restab.transferFrom.Properties.VariableNames,{'CORRIDOR'})));
     
     %% successful optimization
-    success(i) = rescase.success;
+    success(i) = restab.success;
 end
 
 caseNames = strrep(caseNames,'_',' ');
@@ -147,7 +129,7 @@ figs = [F1 F2 F3 F4 F5];
 
 if exist('penetration','var')
     F6 = figure;
-    plot(penetration,curtailment_nom_exp);
+    plot(penetration,curtailment_nom_exp,'*');
     grid on;
     xlabel('Penetration (%)');
     ylabel('Curtailment (MW)');
@@ -174,6 +156,3 @@ for i=1:length(figs)
     saveas(figs(i),['figures/runs/' thisFigureName '.png']);
 end
 
-if saveData
-    save(['data/aggregateData_' base_identifier '.mat'],'curtailment_pc_exp','curtailment_nom_exp','caseNames');
-end
