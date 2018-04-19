@@ -14,10 +14,10 @@ if ~isfield(optns.plot,'plots')
     plots = struct();
     [plots.Pg,plots.Qg,plots.Vm,plots.Curtail, ...
         plots.CurtailTotal,plots.CurtailTotalPercent,plots.Beta,...
-        plots.Transfer,plots.Penetration] = deal(...
+        plots.Transfer,plots.Penetration, plots.LocalPenetration] = deal(...
         1, 1, 1, 0, ...
         0, 0, 0, ...
-        0, 0 );
+        0, 0, 1 );
 else
     plots = optns.plot.plots;
 end
@@ -101,6 +101,7 @@ colors = [
     ]/255;
 
 
+
 %% make legends
 ng = size(table.Pg,1);
 genLabels = cell(1,ng);
@@ -143,7 +144,7 @@ if plots.Pg
         tx = text([1:N]+PH1(i).XOffset-xoffset, PH1(i).YData+yoffset*(yl(2)-yl(1)), genLabelsShort{i},'FontSize',busFontSize);
         set(tx,'Rotation',90);
     end
-    
+       
     %ypos = 1800; % something below the maximum y-value
     ypos = yl(2);
     for i=1:4
@@ -179,6 +180,18 @@ if plots.Pg
     tight_axis(F1);
     %MaximizeFigureWindow();
     
+        ytw = -0.5*yoffset*(yl(2)-yl(1));
+    xtw1 = (1:N)+PH1(optns.gen.curtailableP(1)).XOffset;
+    xtw2 = (1:N)+PH1(optns.gen.curtailableP(end)).XOffset;
+    for i=1:N
+        txw = text(xtw1(i),ytw, '<- wind ->','FontSize',busFontSize,'VerticalAlignment','top');
+        txl = text(xtw1(i),ytw,'|','FontSize',busFontSize','VerticalAlignment','top');
+        txr = text(xtw2(i),ytw,'|','FontSize',busFontSize','VerticalAlignment','top');
+        
+        txw.Position(1) = 0.5*(xtw1(i)+xtw2(i)) + ... % in the middle
+                            - 0.5*txw.Extent(3); % shift left by half of width
+    end
+    
     figureArray = [figureArray F1];
 end
 
@@ -207,6 +220,9 @@ if plots.Qg
         tx = text([1:N]+PH2(i).XOffset-xoffset, max(PH2(i).YData,zeros(1,N))+yoffset*(yl(2)-yl(1)), genLabelsShort{i},'FontSize',busFontSize);
         set(tx,'Rotation',90);
     end
+    
+    
+
     
     
     %ypos = 320; % something below the maximum y-value
@@ -242,6 +258,24 @@ if plots.Qg
     set(F2,'Position',[cp(1:2) fwidth fheight+height_adjust]);
     set(gca,'FontSize',12);
     tight_axis(F2);
+    
+    ytw = -0.5*yoffset*(yl(2)-yl(1));
+    xtw1 = (1:N)+PH2(optns.gen.curtailableP(1)).XOffset;
+    xtw2 = (1:N)+PH2(optns.gen.curtailableP(end)).XOffset;
+    for i=1:N
+        ydata = [];
+        for ii=optns.gen.curtailableP
+            ydata(ii) = PH2(ii).YData(i); 
+        end
+        ymin = min(ydata);
+        
+        txw = text(xtw1(i),ymin+ytw, '<- wind ->','FontSize',busFontSize,'VerticalAlignment','top');
+        txl = text(xtw1(i),ymin+ytw,'|','FontSize',busFontSize','VerticalAlignment','top');
+        txr = text(xtw2(i),ymin+ytw,'|','FontSize',busFontSize','VerticalAlignment','top');
+        
+        txw.Position(1) = 0.5*(xtw1(i)+xtw2(i)) + ... % in the middle
+            - 0.5*txw.Extent(3); % shift left by half of width
+    end
     
     figureArray = [figureArray F2];
 end
@@ -423,6 +457,14 @@ if plots.Penetration
     figureArray = [figureArray F9];
 end
 
+if plots.LocalPenetration
+    
+    
+    
+    
+    
+    
+end
 %% save figures
 
 % figureArray = [F1 F2 F3 F4 F5 F6 F7 F8 F3];
