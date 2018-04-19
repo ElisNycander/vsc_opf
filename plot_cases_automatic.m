@@ -2,15 +2,15 @@ close all;
 clear;
 
 saveAggregatePlots = 0;
-plotIndividualResults = 0;
-plotAggregateResults = 1;
+plotIndividualResults = 1;
+plotAggregateResults = 0;
 grey_plot = 0;
 
 %penetration = 0.8:0.005:0.995;
 
 %plot_run = 'run44';
 %plot_cases = {'run26_E1_PQ_P065','run26_E1_PQ_P07'};
-plot_cases = {'run44_E3_PQ_P099','run44_E3_PQ_P0995'};
+plot_cases = {'run42_E1_PQ_QWind_P0995'};
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% %%
@@ -52,6 +52,12 @@ for i=1:N
     load(['data/' iD.name]);
     
     if plotIndividualResults
+        if ~isfield(optns,'plot')
+            optns.plot = struct();
+            optns.plot.plot_titles = 0;
+        end
+        optns.plotGreyscale = 0;
+        optns.scenario_names = {'Base scenario','20% wind increase'};
         figArray = plot_results(restab,optns);
     end
     
