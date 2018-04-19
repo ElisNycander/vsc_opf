@@ -21,7 +21,6 @@ curtail_all = [];
 losses_all = [];
 
 
-
 for j=1:length(runs)   
 
     plot_run = runs{j};
@@ -41,7 +40,7 @@ for j=1:length(runs)
     windnet = [];
     windscale = [];
     success = [];
-
+    
 
     for i=1:N
         
@@ -101,7 +100,11 @@ for j=1:length(runs)
         windscale(i) = pwind(1); % base case wind
         
         % successful optimization
-        success(i) = restab.success;     
+        success(i) = restab.success;    
+       
+      
+       
+
     end
     % save desired variables
     curtail_all = [curtail_all curtailment_nom(:,2)];
@@ -110,7 +113,7 @@ for j=1:length(runs)
     transfer_all = [transfer_all transferNorthSouth];
     losses_all = [losses_all losses];
     
-
+    
 end
 
     % create legend

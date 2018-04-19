@@ -464,52 +464,26 @@ end
 %% Penetration in sub-systems
 if plots.LocalPenetration
     
-    PgMat = table2array(table.Pg(:, setdiff(table.Pg.Properties.VariableNames,{'GEN','BUS','MIN','MAX'})));
-    
-    nAreas = max(optns.localAreas(:,2));
-    localPenetration = zeros(N,nAreas);
-    localPW = zeros(N,nAreas);
-    localPC = zeros(N,nAreas);
-    area_legends = {'1011-1014','1021-1022','2031-2032'};
-    
-    for i=1:nAreas
-        % find buses in area
-        buses = optns.localAreas( optns.localAreas(:,2) == i , 1);
-      
-        
-        for ii=1:N
-           
-            % find wind generation at buses
-            pc = 0;
-            pw = 0;
-            
-            for iii=1:size(PgMat,1)
-                thisbus = table2array(table.Pg(iii,'BUS'));
-                if ismember(thisbus,buses)
-                    if ismember(iii,optns.gen.curtailableP)
-                        pw = pw + PgMat(iii,ii);
-                    else
-                        pc = pc + PgMat(iii,ii);
-                    end  
-                end
-            end
-            ratio = pw/(pc + pw);
-            localPenetration(ii,i) = ratio;
-            localPW(ii,i) = pw;
-            localPC(ii,i) = pc;
-           % store values 
+    r = calculate_local_penetration(table,optns);
+    nAreas = size(r.ratio,2);
+    if ~isfield(optns.plot,'area_legend')
+        area_legends = {};
+        for i=1:nAreas
+            area_legends{i} = ['Area ' num2str(i)];
         end
+    else
+        area_legends = optns.plot.area_legend;
     end
     
     figure;
-    PH10 = bar(barx,localPenetration*100);
+    PH10 = bar(barx,r.ratio*100);
     grid on;
     legend(area_legends);
     ylabel('Penetration (%)')
     ylim([95 100]);
     
     figure;
-    PH11 = bar(1:nAreas,[localPC(2,:) ; localPW(2,:)].','stacked');
+    PH11 = bar(1:nAreas,[r.Pc(2,:) ; r.Pw(2,:)].','stacked');
     grid on;
     xlabel('Local Area');
     ylabel('P (MW)');

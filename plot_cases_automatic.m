@@ -2,15 +2,15 @@ close all;
 clear;
 
 saveAggregatePlots = 0;
-plotIndividualResults = 1;
-plotAggregateResults = 0;
+plotIndividualResults = 0;
+plotAggregateResults = 1;
 grey_plot = 0;
 
 %penetration = 0.8:0.005:0.995;
 
-%plot_run = 'run44';
+plot_run = 'run41';
 %plot_cases = {'run26_E1_PQ_P065','run26_E1_PQ_P07'};
-plot_cases = {'run42_E1_PQ_QWind_P0995'};
+%plot_cases = {'run42_E1_PQ_QWind_P0995'};
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% %%
@@ -26,6 +26,7 @@ else
 end
 
 penetration = [];
+penetration_local = [];
 for i=1:N
     
     if isequal(looptype,'run')
@@ -51,10 +52,12 @@ for i=1:N
     % load data
     load(['data/' iD.name]);
     
+    
     if plotIndividualResults
         if ~isfield(optns,'plot')
             optns.plot = struct();
             optns.plot.plot_titles = 0;
+            
         end
         optns.plotGreyscale = 0;
         optns.scenario_names = {'Base scenario','20% wind increase'};
@@ -113,6 +116,16 @@ for i=1:N
     
     % successful optimization
     success(i) = restab.success;
+    
+     %% penetration in sub-systems (note: this calculation should be put in get_opf_results)
+        %Pg = table2array(restab.Pg(:, setdiff(restab.Pg.Properties.VariableNames,{'GEN','BUS','MIN','MAX'})));
+        optns.localAreas = n32_local_areas();
+         r = calculate_local_penetration(restab,optns);
+         nAreas = size(r.ratio,2);
+    
+    penetration_local(i,:) = r.ratio(2,:);
+         
+        
 end
 
 contingencyLabls = {};
@@ -239,6 +252,16 @@ if plotAggregateResults
         double_x_axis(F12,penetration,windscale)
     end
     
+    %% Local penetration
+    F13 = figure; 
+    plot(penetration,penetration_local);
+    grid on;
+    ylabel('Subsystem penetration');
+    xlabel('North penetration');
+    if ~isfield(optns,'plot') || ~isfield(optns.plot,'area_legend')
+        optns.plot.area_legend = {'1011-1014','1021-1022','2031-2032'};
+    end
+    legend(optns.plot.area_legend);
 end
 
 % if saveAggregatePlots
