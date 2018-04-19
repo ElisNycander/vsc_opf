@@ -15,11 +15,15 @@ if ~isfield(optns.plot,'plots')
     [plots.Pg,plots.Qg,plots.Vm,plots.Curtail, ...
         plots.CurtailTotal,plots.CurtailTotalPercent,plots.Beta,...
         plots.Transfer,plots.Penetration, plots.LocalPenetration] = deal(...
-        1, 1, 1, 0, ...
+        0, 0, 0, 0, ...
         0, 0, 0, ...
         0, 0, 1 );
 else
     plots = optns.plot.plots;
+end
+
+if ~isfield(optns,'localAreas')
+    optns.localAreas = n32_local_areas();
 end
 
 if ~isfield(optns.plot,'plot_titles')
@@ -457,12 +461,59 @@ if plots.Penetration
     figureArray = [figureArray F9];
 end
 
+%% Penetration in sub-systems
 if plots.LocalPenetration
     
+    PgMat = table2array(table.Pg(:, setdiff(table.Pg.Properties.VariableNames,{'GEN','BUS','MIN','MAX'})));
     
+    nAreas = max(optns.localAreas(:,2));
+    localPenetration = zeros(N,nAreas);
+    localPW = zeros(N,nAreas);
+    localPC = zeros(N,nAreas);
+    area_legends = {'1011-1014','1021-1022','2031-2032'};
     
+    for i=1:nAreas
+        % find buses in area
+        buses = optns.localAreas( optns.localAreas(:,2) == i , 1);
+      
+        
+        for ii=1:N
+           
+            % find wind generation at buses
+            pc = 0;
+            pw = 0;
+            
+            for iii=1:size(PgMat,1)
+                thisbus = table2array(table.Pg(iii,'BUS'));
+                if ismember(thisbus,buses)
+                    if ismember(iii,optns.gen.curtailableP)
+                        pw = pw + PgMat(iii,ii);
+                    else
+                        pc = pc + PgMat(iii,ii);
+                    end  
+                end
+            end
+            ratio = pw/(pc + pw);
+            localPenetration(ii,i) = ratio;
+            localPW(ii,i) = pw;
+            localPC(ii,i) = pc;
+           % store values 
+        end
+    end
     
+    figure;
+    PH10 = bar(barx,localPenetration*100);
+    grid on;
+    legend(area_legends);
+    ylabel('Penetration (%)')
+    ylim([95 100]);
     
+    figure;
+    PH11 = bar(1:nAreas,[localPC(2,:) ; localPW(2,:)].','stacked');
+    grid on;
+    xlabel('Local Area');
+    ylabel('P (MW)');
+    % stacked bar plot (only for 1st contingency case)
     
 end
 %% save figures
