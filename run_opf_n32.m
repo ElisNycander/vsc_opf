@@ -111,6 +111,8 @@ optns.transferCorridors = {
 }; % transfer over these lines will be summed (active power flow P)   
 optns.externalBuses = [4071 4072]; % used when computing wind pentration in plot_results
 
+optns.localAreas = n32_local_areas();
+
 optns.branch.limit = 0; % turn on/off branch limits % Note: if optimizeBaseP = 0 limits are only added for contingencies
 optns.branch.limit_base_case = 0;
 
